@@ -1,0 +1,24 @@
+# npm
+dist
+web
+node_modules
+
+# test coverage
+coverage
+
+# config
+config.json
+!/src/config.json
+
+# ide
+.idea
+.vs
+
+# vim
+*.sw?
+
+# direnv
+.direnv/
+
+# environment related
+.envrc

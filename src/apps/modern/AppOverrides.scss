@@ -1,0 +1,235 @@
+// Default MUI breakpoints
+// https://mui.com/material-ui/customization/breakpoints/#default-breakpoints
+$mui-bp-sm: 600px;
+$mui-bp-md: 900px;
+$mui-bp-lg: 1200px;
+$mui-bp-xl: 1536px;
+
+// Old dashboard styling must not add empty padding to the modern/video header.
+.finweb-layout > .MuiAppBar-root.MuiAppBar-positionFixed {
+    padding: 0 !important;
+    background: transparent !important;
+    box-shadow: none;
+}
+
+// MUI applies scrollbar compensation here, outside the legacy AppBar padding rule.
+.finweb-appbar-content {
+    box-sizing: border-box;
+    width: 100%;
+
+    &:not(:empty) {
+        padding-top: 12px;
+
+        @media (max-width: 599px) {
+            padding-top: 8px;
+        }
+    }
+}
+
+.finweb-layout .finweb-header-actions,
+.finweb-layout .finweb-library-summary,
+.finweb-layout .finweb-library-actions {
+    background: var(--jf-palette-background-paper);
+    color: var(--jf-palette-text-primary);
+    border-radius: 8px;
+    backdrop-filter: blur(8px);
+
+    @supports (background: color-mix(in srgb, black, transparent)) {
+        background: color-mix(in srgb, var(--jf-palette-background-paper) 88%, transparent);
+    }
+}
+
+.finweb-layout .finweb-library-toolbar {
+    gap: 8px 16px;
+    padding-block: 4px;
+    background: transparent;
+}
+
+.finweb-layout .finweb-library-summary,
+.finweb-layout .finweb-library-actions {
+    padding: 4px;
+}
+
+.finweb-video-presentation {
+    .finweb-layout,
+    .finweb-drawer,
+    .appfooter {
+        visibility: hidden !important;
+        pointer-events: none !important;
+    }
+}
+
+body.finweb-modern-layout .appfooter {
+    left: 0 !important;
+    width: auto !important;
+    margin-left: 0 !important;
+}
+
+.finweb-modern-layout.finweb-sidebar-visible .appfooter {
+    left: var(--finweb-sidebar-width) !important;
+    width: calc(100% - var(--finweb-sidebar-width)) !important;
+    margin-left: 0 !important;
+}
+
+.finweb-drawer {
+    .MuiDrawer-paper {
+        overflow: hidden;
+        padding-bottom: 0 !important;
+        border-right: 0;
+        background: var(--secondary-background-color, var(--jf-palette-background-paper));
+    }
+
+    .MuiDrawer-paper > [role="presentation"] {
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        height: 100%;
+    }
+
+    .finweb-drawer-brand {
+        display: flex;
+        flex: 0 0 95px;
+        align-items: center;
+        padding: 0 25px;
+
+        img {
+            display: block;
+            width: 180px;
+            max-width: 100%;
+            height: 40px;
+            object-fit: contain;
+        }
+    }
+
+    .finweb-navigation {
+        flex: 1;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding-bottom: max(16px, env(safe-area-inset-bottom));
+    }
+
+    .sidebarHeader {
+        margin: 18px 0 8px;
+        padding: 0 24px;
+        color: inherit;
+        font-size: 14px;
+        font-weight: 600;
+    }
+
+    .finweb-navigation .navMenuOption {
+        display: flex;
+        flex-grow: 0;
+        align-items: center;
+        box-sizing: border-box;
+        width: 85% !important;
+        min-height: 45px;
+        height: auto !important;
+        margin: 3px auto !important;
+        padding: 10px 16px !important;
+        border: 0;
+        border-radius: 100px !important;
+        background: transparent;
+        color: inherit;
+        font: inherit;
+        font-size: 14px;
+        text-align: start !important;
+        text-decoration: none;
+        cursor: pointer;
+        transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+
+        &:hover {
+            background: rgba(128, 128, 128, 0.15);
+        }
+
+        &:focus-visible {
+            outline: 2px solid var(--primary-accent-color, #00a4dc);
+            outline-offset: -2px;
+        }
+
+        &.navMenuOption-selected {
+            background: var(--secondary-accent-color, var(--jf-palette-primary-main, #00a4dc)) !important;
+            color: var(--primary-accent-color, var(--jf-palette-primary-contrastText, #fff));
+        }
+    }
+
+    .navMenuOptionIcon,
+    .navMenuOptionText {
+        position: static !important;
+        left: auto !important;
+        margin-top: 0 !important;
+    }
+
+    .navMenuOptionIcon {
+        display: flex;
+        flex: 0 0 24px;
+        align-items: center;
+        justify-content: center;
+        margin-inline: 0 14px !important;
+    }
+
+    .navMenuOptionText {
+        min-width: 0;
+        line-height: 1.4;
+        white-space: normal;
+        overflow-wrap: anywhere;
+    }
+
+    @media (max-width: 899px) {
+        .finweb-drawer-brand {
+            flex-basis: 72px;
+        }
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .finweb-drawer .finweb-navigation .navMenuOption {
+        transition: none;
+    }
+}
+
+// Hide some items from the user "settings" page that are in the drawer
+#myPreferencesMenuPage {
+    .lnkQuickConnectPreferences,
+    .adminSection,
+    .userSection {
+        display: none !important;
+    }
+}
+
+// Fix the padding of some pages
+.homePage.libraryPage.withTabs, // Home page
+// Library pages excluding the item details page and tabbed pages
+.libraryPage:not(
+    .itemDetailPage
+) {
+    padding-top: 0 !important;
+}
+
+// Match the old CSS's ID specificity inside :not() without affecting the dashboard.
+.finweb-modern-layout .finweb-layout .libraryPage:not(#editItemMetadataPage),
+.finweb-layout .quickConnectSettingsContainer {
+    margin-left: 0 !important;
+}
+
+.layout-mobile {
+    .itemDetailPage {
+        // Fix horizontal panning on mobile item details page
+        overflow-x: hidden;
+        overflow-x: clip;
+    }
+
+    .itemBackdrop {
+        // Fix backdrop position on mobile item details page
+        margin-top: -48px !important;
+
+        // Add a subtle gradient over the backdrop to ensure the app bar buttons are visible
+        &::before {
+            display: block;
+            content: "";
+            height: 100%;
+            width: 100%;
+            background: linear-gradient(180deg, rgba(32, 32, 32, 0.6) 0%, rgba(32, 32, 32, 0.2) 4rem, rgba(0, 0, 0, 0) 50%);
+        }
+    }
+}

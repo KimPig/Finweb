@@ -1,0 +1,25 @@
+.finweb-image-placeholder {
+    background: var(--secondary-background-color, var(--jf-palette-background-paper, #202020));
+    pointer-events: none;
+}
+
+// Only the incoming poster fades; its backing image remains opaque until completion.
+.finweb-image-poster-revealing {
+    animation: finweb-poster-reveal 0.26s ease-out both;
+}
+
+@keyframes finweb-poster-reveal {
+    from {
+        opacity: 0;
+    }
+
+    to {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .finweb-image-poster-revealing {
+        animation: none;
+    }
+}

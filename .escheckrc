@@ -1,0 +1,11 @@
+{
+    "ecmaVersion": "es5",
+    "files": "./dist/**/*.js",
+    "not": [
+        "./dist/libraries/pdf.worker.js",
+        "./dist/libraries/worker-bundle.js",
+        "./dist/libbitsub.*.js",
+        "./dist/node_modules.jassub.*.chunk.js",
+        "./dist/serviceworker.js"
+    ]
+}

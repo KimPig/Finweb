@@ -1,0 +1,181 @@
+name: Build enhanced Jellyfin Web
+
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: 'Official Jellyfin Web tag to build (empty = latest release)'
+        required: false
+        type: string
+      include_prereleases:
+        description: 'Allow pre-release tags when choosing the latest release'
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+concurrency:
+  group: enhancement-release
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    # This inherited patch publisher belongs to the original enhancement fork.
+    # Finweb snapshots must not automatically publish upstream patch releases.
+    if: ${{ github.repository == 'KimPig/jellyfin-web' }}
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      AUTOMATION_REF: master
+    steps:
+      - name: Check out automation files
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: automation
+
+      - name: Choose an upstream release
+        id: upstream
+        env:
+          REQUESTED_TAG: ${{ inputs.upstream_tag }}
+          INCLUDE_PRERELEASES: ${{ inputs.include_prereleases || 'true' }}
+        run: |
+          set -euo pipefail
+          if [[ -n "$REQUESTED_TAG" ]]; then
+            tag="$REQUESTED_TAG"
+          else
+            releases="$(gh api 'repos/jellyfin/jellyfin-web/releases?per_page=30')"
+            if [[ "$INCLUDE_PRERELEASES" == 'true' ]]; then
+              tag="$(jq -r '[.[] | select(.draft | not)] | .[0].tag_name // empty' <<<"$releases")"
+            else
+              tag="$(jq -r '[.[] | select(.draft | not) | select(.prerelease | not)] | .[0].tag_name // empty' <<<"$releases")"
+            fi
+          fi
+          test -n "$tag"
+          patch_version="$(tr -d '[:space:]' < automation/patches/version.txt)"
+          [[ "$patch_version" =~ ^[0-9]{8}\.[1-9][0-9]*$ ]]
+          release_tag="${tag}.patch.${patch_version}"
+          if gh release view "$release_tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Patch build $patch_version for $tag already exists."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "upstream_tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "patch_version=$patch_version" >> "$GITHUB_OUTPUT"
+          echo "release_tag=$release_tag" >> "$GITHUB_OUTPUT"
+          echo "publish=true" >> "$GITHUB_OUTPUT"
+
+      - name: Check out and patch official Jellyfin Web
+        if: steps.upstream.outputs.publish == 'true'
+        env:
+          UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
+        run: |
+          set -euo pipefail
+          git clone https://github.com/jellyfin/jellyfin-web.git upstream-web
+          git -C upstream-web checkout "$UPSTREAM_TAG"
+          git -C upstream-web apply --3way --whitespace=error-all ../automation/patches/jellyfin-web-enhancements.patch
+          git -C upstream-web diff --check
+
+      - name: Setup node environment
+        if: steps.upstream.outputs.publish == 'true'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: upstream-web/.nvmrc
+          cache: npm
+          cache-dependency-path: upstream-web/package-lock.json
+          check-latest: true
+
+      - name: Install dependencies
+        if: steps.upstream.outputs.publish == 'true'
+        working-directory: upstream-web
+        run: npm ci
+
+      - name: Verify Web enhancements
+        if: steps.upstream.outputs.publish == 'true'
+        working-directory: upstream-web
+        run: |
+          set -euo pipefail
+          npm run build:check
+          npm test -- --run \
+            src/plugins/htmlVideoPlayer/subtitles \
+            src/utils/subtitleFontBridgeResolver.test.ts
+          npx eslint \
+            src/components/playback/skipsegment.ts \
+            src/components/pluginManager.js \
+            src/plugins/htmlVideoPlayer/plugin.js \
+            src/plugins/htmlVideoPlayer/subtitleFontBridgeResolver.ts \
+            "src/plugins/htmlVideoPlayer/subtitles/**/*.ts" \
+            src/utils/subtitleFontBridgeResolver.test.ts
+
+      - name: Verify real ASS worker rendering
+        if: steps.upstream.outputs.publish == 'true'
+        working-directory: upstream-web
+        run: |
+          set -euo pipefail
+          npm install --prefix "$RUNNER_TEMP/ass-browser-tools" --no-save --no-package-lock playwright@1.63.0
+          node "$RUNNER_TEMP/ass-browser-tools/node_modules/playwright/cli.js" install --with-deps chromium
+          command -v ffmpeg >/dev/null || { sudo apt-get update && sudo apt-get install -y ffmpeg; }
+          PLAYWRIGHT_MODULE="$RUNNER_TEMP/ass-browser-tools/node_modules/playwright/index.mjs" node scripts/test-ass-browser.mjs
+
+      - name: Build production Web assets
+        if: steps.upstream.outputs.publish == 'true'
+        working-directory: upstream-web
+        run: |
+          npm run build:production
+          npm run escheck
+
+      - name: Publish patched source tag and release
+        if: steps.upstream.outputs.publish == 'true'
+        env:
+          UPSTREAM_TAG: ${{ steps.upstream.outputs.upstream_tag }}
+          PATCH_VERSION: ${{ steps.upstream.outputs.patch_version }}
+          RELEASE_TAG: ${{ steps.upstream.outputs.release_tag }}
+        run: |
+          set -euo pipefail
+          asset_base="jellyfin-web-${RELEASE_TAG}-dist"
+          git -C upstream-web config user.name 'github-actions[bot]'
+          git -C upstream-web config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git -C upstream-web add -A -- \
+            scripts/test-ass-browser.mjs \
+            src/apps/legacy/controllers/playback/video/index.js \
+            src/components/playback/skipbutton.scss \
+            src/components/playback/skipsegment.ts \
+            src/components/pluginManager.js \
+            src/plugins/htmlVideoPlayer/plugin.js \
+            src/plugins/htmlVideoPlayer/style.scss \
+            src/plugins/htmlVideoPlayer/subtitleFontBridgeResolver.ts \
+            src/plugins/htmlVideoPlayer/subtitles \
+            src/styles/videoosd.scss \
+            src/types/libass-wasm.d.ts \
+            src/utils/subtitleFontBridgeResolver.test.ts
+          git -C upstream-web diff --quiet
+          test -z "$(git -C upstream-web ls-files --others --exclude-standard)"
+          git -C upstream-web diff --cached --check
+          if git -C upstream-web diff --cached --quiet; then
+            echo 'The compatibility patch produced no source changes.' >&2
+            exit 1
+          fi
+          git -C upstream-web commit -m "feat: apply Web enhancements to $UPSTREAM_TAG"
+          git -C upstream-web tag -a "$RELEASE_TAG" -m "Patched Jellyfin Web build $PATCH_VERSION for $UPSTREAM_TAG"
+          git -C upstream-web remote add target "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git -C upstream-web push target "refs/tags/$RELEASE_TAG"
+          (
+            cd upstream-web
+            zip -qr "../${asset_base}.zip" dist
+          )
+          sha256sum "${asset_base}.zip" > "${asset_base}.zip.sha256"
+          release_flags=()
+          if [[ "$UPSTREAM_TAG" == *-* ]]; then
+            release_flags+=(--prerelease)
+          fi
+          gh release create "$RELEASE_TAG" \
+            "${asset_base}.zip" \
+            "${asset_base}.zip.sha256" \
+            --repo "$GITHUB_REPOSITORY" \
+            "${release_flags[@]}" \
+            --title "Jellyfin Web $RELEASE_TAG" \
+            --notes "Automated patch build $PATCH_VERSION based on official Jellyfin Web $UPSTREAM_TAG. The release ZIP contains the validated production dist assets."

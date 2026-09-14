@@ -1,0 +1,2 @@
+# A unified patch must represent blank context lines with a single leading space.
+patches/*.patch whitespace=-trailing-space

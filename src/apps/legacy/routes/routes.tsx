@@ -1,0 +1,50 @@
+import { Navigate, RouteObject } from 'react-router-dom';
+import React from 'react';
+
+import ConnectionRequired from 'components/ConnectionRequired';
+import { isVisiblePreferenceRoute } from 'constants/finwebPreferences';
+import { toAsyncPageRoute } from 'components/router/AsyncRoute';
+import { toViewManagerPageRoute } from 'components/router/LegacyRoute';
+import ErrorBoundary from 'components/router/ErrorBoundary';
+import FallbackRoute from 'components/router/FallbackRoute';
+
+import AppLayout from '../AppLayout';
+
+import { ASYNC_PUBLIC_ROUTES, ASYNC_USER_ROUTES } from './asyncRoutes';
+import { LEGACY_PUBLIC_ROUTES, LEGACY_USER_ROUTES } from './legacyRoutes';
+
+export const APP_ROUTES: RouteObject[] = [
+    {
+        path: '/*',
+        Component: AppLayout,
+        children: [
+            { index: true, element: <Navigate replace to='/home' /> },
+
+            {
+                /* User routes */
+                Component: ConnectionRequired,
+                children: [
+                    ...ASYNC_USER_ROUTES.map(toAsyncPageRoute),
+                    ...LEGACY_USER_ROUTES.filter(isVisiblePreferenceRoute).map(toViewManagerPageRoute),
+                    { path: 'mypreferencessubtitles', element: <Navigate replace to='/mypreferencesmenu' /> }
+                ],
+                ErrorBoundary
+            },
+
+            {
+                /* Public routes */
+                element: <ConnectionRequired level='public' />,
+                children: [
+                    ...ASYNC_PUBLIC_ROUTES.map(toAsyncPageRoute),
+                    ...LEGACY_PUBLIC_ROUTES.map(toViewManagerPageRoute),
+                    /* Fallback route for invalid paths */
+                    {
+                        path: '*',
+                        Component: FallbackRoute
+                    }
+                ]
+            }
+
+        ]
+    }
+];
