@@ -1,0 +1,127 @@
+name: Finweb Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: finweb-release-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    if: github.repository == 'KimPig/Finweb'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out the tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Validate release version
+        run: |
+          node --test scripts/test-release-version.mjs
+          node scripts/validate-release.mjs
+
+      - name: Install dependencies
+        run: npm ci --no-audit
+
+      - name: Check types and tests
+        run: |
+          npm run build:check
+          npm test
+
+      - name: Build and check production files
+        env:
+          JELLYFIN_VERSION: ${{ github.ref_name }}
+        run: |
+          npm run build:production
+          npm run escheck
+
+      - name: Package the web frontend
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          output="$RUNNER_TEMP/finweb-release"
+          mkdir -p "$output"
+          test -s dist/index.html
+          cp LICENSE dist/LICENSE
+          tar -czf "$output/finweb-$version.tar.gz" -C dist .
+          (
+            cd dist
+            zip -q -r "$output/finweb-$version.zip" .
+          )
+          (
+            cd "$output"
+            sha256sum "finweb-$version.zip" "finweb-$version.tar.gz" > SHA256SUMS.txt
+          )
+          printf '%s\n' \
+            "Finweb $version" \
+            '' \
+            'Download either frontend archive and extract its contents into your web directory.' \
+            'Back up the previous frontend first. This package does not include Jellyfin Server.' \
+            '' \
+            "Source: https://github.com/$GITHUB_REPOSITORY/tree/$GITHUB_SHA" \
+            'Checksums: SHA256SUMS.txt' \
+            > "$output/release-notes.md"
+
+      - name: Retain release files for publication
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: finweb-release-${{ github.ref_name }}
+          path: ${{ runner.temp }}/finweb-release/
+          if-no-files-found: error
+          retention-days: 14
+          overwrite: true
+
+  publish:
+    needs: build
+    if: github.repository == 'KimPig/Finweb'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Download this run's release files
+        run: gh run download "$GITHUB_RUN_ID" --name "finweb-release-$RELEASE_TAG" --dir release
+
+      - name: Verify archives and publish
+        working-directory: release
+        run: |
+          set -euo pipefail
+          version="${RELEASE_TAG#v}"
+          test -s "finweb-$version.zip"
+          test -s "finweb-$version.tar.gz"
+          sha256sum --check SHA256SUMS.txt
+          if draft=$(gh release view "$RELEASE_TAG" --json isDraft --jq '.isDraft'); then
+            if [ "$draft" != 'true' ]; then
+              echo 'This version is already published; refusing to replace its files.' >&2
+              exit 1
+            fi
+          else
+            gh release create "$RELEASE_TAG" --verify-tag --draft \
+              --title "Finweb $version" --notes-file release-notes.md
+          fi
+          gh release upload "$RELEASE_TAG" \
+            "finweb-$version.zip" "finweb-$version.tar.gz" SHA256SUMS.txt --clobber
+          gh release edit "$RELEASE_TAG" --draft=false

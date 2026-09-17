@@ -12,7 +12,11 @@ const Assets = [
     'native-promise-only/npo.js',
     'libarchive.js/dist/worker-bundle.js',
     'libarchive.js/dist/libarchive.wasm',
-    'pdfjs-dist/build/pdf.worker.js'
+    'pdfjs-dist/build/pdf.worker.js',
+    '@jellyfin/libass-wasm/dist/js/subtitles-octopus-worker.js',
+    '@jellyfin/libass-wasm/dist/js/subtitles-octopus-worker.wasm',
+    '@jellyfin/libass-wasm/dist/js/subtitles-octopus-worker-legacy.js',
+    '@jellyfin/libass-wasm/dist/js/default.woff2'
 ];
 
 const DEV_MODE = process.env.NODE_ENV !== 'production';
@@ -192,11 +196,6 @@ const config = {
                 test: /\.(js|jsx|mjs)$/,
                 include: [
                     path.resolve(__dirname, 'node_modules/@jellyfin/libass-wasm'),
-                    path.resolve(__dirname, 'node_modules/jassub'),
-                    path.resolve(__dirname, 'node_modules/abslink'),
-                    path.resolve(__dirname, 'node_modules/rvfc-polyfill'),
-                    path.resolve(__dirname, 'node_modules/lfa-ponyfill'),
-                    path.resolve(__dirname, 'node_modules/throughput'),
                     path.resolve(__dirname, 'node_modules/@jellyfin/sdk'),
                     path.resolve(__dirname, 'node_modules/@mui/base'),
                     path.resolve(__dirname, 'node_modules/@mui/lab'),
@@ -231,9 +230,11 @@ const config = {
                     path.resolve(__dirname, 'node_modules/libarchive.js'),
                     path.resolve(__dirname, 'node_modules/libbitsub'),
                     path.resolve(__dirname, 'node_modules/linkify-it'),
+                    path.resolve(__dirname, 'node_modules/m3u8-parser'),
                     path.resolve(__dirname, 'node_modules/markdown-it'),
                     path.resolve(__dirname, 'node_modules/material-react-table'),
                     path.resolve(__dirname, 'node_modules/mdurl'),
+                    path.resolve(__dirname, 'node_modules/mpd-parser'),
                     path.resolve(__dirname, 'node_modules/proxy-polyfill'),
                     path.resolve(__dirname, 'node_modules/punycode'),
                     path.resolve(__dirname, 'node_modules/react-blurhash'),

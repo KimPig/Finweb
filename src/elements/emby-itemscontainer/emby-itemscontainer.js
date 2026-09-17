@@ -241,6 +241,11 @@ function onLibraryChanged({ Data }, itemsContainer) {
 
 function onPlaybackStopped(e, stopInfo) {
     const itemsContainer = this;
+    if (itemsContainer.hasAttribute('data-home-playback-query')) {
+        // The server report is still pending; its completed event refreshes Home.
+        itemsContainer.needsRefresh = true;
+        return;
+    }
     const state = stopInfo.state;
 
     const eventsToMonitor = getEventsToMonitor(itemsContainer);
@@ -312,6 +317,12 @@ ItemsContainerPrototype.attachedCallback = function () {
 
 ItemsContainerPrototype.detachedCallback = function () {
     clearRefreshInterval(this);
+    if (this.refreshTimeout) {
+        clearTimeout(this.refreshTimeout);
+        this.refreshTimeout = null;
+    }
+    this.lastHomePlaybackResult = null;
+    this.lastHomePlaybackHtml = null;
 
     this.enableMultiSelect(false);
     this.enableDragReordering(false);
@@ -360,6 +371,10 @@ ItemsContainerPrototype.resume = function (options) {
 };
 
 ItemsContainerPrototype.refreshItems = function () {
+    if (this.hasAttribute('data-home-playback-query') && this.refreshTimeout) {
+        clearTimeout(this.refreshTimeout);
+        this.refreshTimeout = null;
+    }
     if (!this.fetchData) {
         return Promise.resolve();
     }
@@ -421,7 +436,24 @@ function onDataFetched(result) {
     // This happens when the view is unloaded while the request is still pending.
     if (!this.getItemsHtml) return;
 
+    const isHomePlaybackSection = this.hasAttribute('data-home-playback-query');
+    if (isHomePlaybackSection) {
+        if (this.refreshTimeout) {
+            clearTimeout(this.refreshTimeout);
+            this.refreshTimeout = null;
+        }
+        // WebSocket notifications may request the same fresh list again.
+        if (this.lastHomePlaybackResult === result) return;
+    }
+
     const items = result.Items || result;
+    const html = this.getItemsHtml(items);
+    if (isHomePlaybackSection) {
+        this.lastHomePlaybackResult = result;
+        // A new response with identical visible cards should not blink the row.
+        if (this.lastHomePlaybackHtml === html) return;
+        this.lastHomePlaybackHtml = html;
+    }
 
     const parentContainer = this.parentContainer;
     if (parentContainer) {
@@ -441,7 +473,7 @@ function onDataFetched(result) {
         focusId = activeElement.getAttribute('data-id');
     }
 
-    this.innerHTML = this.getItemsHtml(items);
+    this.innerHTML = html;
 
     imageLoader.lazyChildren(this);
 

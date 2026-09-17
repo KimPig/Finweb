@@ -1,42 +1,20 @@
 /* eslint-disable compat/compat -- Modern browser playback; legacy bitmap/local paths stay in the host. */
-import { ServerConnections } from 'lib/jellyfin-apiclient';
-import { resolveSubtitleFontBridge } from './subtitleFontBridgeResolver';
 import { TextSubtitlePipeline } from './subtitles/TextSubtitlePipeline';
-import { JassubRenderer, withSubtitleTimeout } from './subtitles/renderers/JassubRenderer';
+import { withSubtitleTimeout } from './subtitles/withSubtitleTimeout';
+import { createPreparedLibassWasmRenderer } from './subtitles/renderers/PreparedLibassWasmRenderer';
 import { NativeTextRenderer } from './subtitles/renderers/NativeTextRenderer';
 import { SubtitleDiagnosticTrace, type SubtitleDiagnosticDetails } from './subtitles/diagnostics';
-import { fetchSubtitleResource } from './subtitles/resourceDiagnostics';
-import { SubtitleResourceCache } from './subtitles/SubtitleResourceCache';
-import defaultFontUrl from 'jassub/dist/default.woff2';
-import type { SubtitleLoadRequest, SubtitlePipelineStateChange, SubtitleSlot } from './subtitles/types';
+import defaultFontUrl from '@jellyfin/libass-wasm/dist/js/default.woff2';
+import type { SubtitleLoadRequest, SubtitlePipelineStateChange, SubtitleRenderer, SubtitleSlot } from './subtitles/types';
 
-export interface SessionTrack {
-    Index: number;
-    Codec?: string | null;
-    Type?: string | null;
-    DeliveryMethod?: string | null;
-    realDeliveryMethod?: string | null;
-    IsExternal?: boolean;
-    Language?: string | null;
-    IsForced?: boolean;
-}
-
-interface PlaybackOptions {
-    item: { Id: string; ServerId: string };
-    mediaSource: {
-        Id: string;
-        MediaStreams: SessionTrack[];
-        MediaAttachments?: { MimeType?: string | null; DeliveryUrl: string }[] | null;
-    };
-    playMethod?: string;
-    transcodingOffsetTicks?: number | null;
-}
-
+import { JellyfinSubtitleResources, type PlaybackOptions, type SessionTrack } from '../finwebPlayer/JellyfinSubtitleResources';
+export type { SessionTrack } from '../finwebPlayer/JellyfinSubtitleResources';
 interface Options {
     videoElement: HTMLVideoElement;
     getPlaybackOptions(): PlaybackOptions;
     getSubtitleUrl(track: SessionTrack, item: PlaybackOptions['item']): string;
     onStateChange?(change: SubtitlePipelineStateChange): void;
+    onBackgroundSubtitlesReady?(): void;
     useManagedTrack(track: SessionTrack): boolean;
     renderLegacy(track: SessionTrack | null, slot: SubtitleSlot): void;
     prepareManaged(slot: SubtitleSlot): void;
@@ -45,33 +23,32 @@ interface Options {
 }
 
 const ASS_CODECS = ['ass', 'ssa'];
-const FONT_TYPES = /^(font\/|application\/(vnd\.ms-opentype|x-truetype-font|x-font-ttf|x-font-opentype))/i;
-
-function ensureResourceActive(signal: AbortSignal) {
-    if (signal.aborted) throw new Error('Subtitle resource cancelled');
+interface PreparedSubtitle {
+    content: string;
+    fonts: Uint8Array<ArrayBuffer>[];
 }
 
 /** One owner for a source's track choices, resource requests and presentation. */
-export class FinwebPlaybackSession {
+export class FinwebPlaybackSession extends JellyfinSubtitleResources {
     readonly diagnostic = new SubtitleDiagnosticTrace();
     readonly selectionDiagnostics = new Map<SubtitleSlot, SubtitleDiagnosticTrace>();
     readonly mediaEvents = ['loadstart', 'loadedmetadata', 'loadeddata', 'canplay', 'playing', 'waiting', 'stalled', 'seeking', 'seeked', 'ratechange', 'pause', 'error'];
     readonly pipeline: TextSubtitlePipeline;
-    readonly playback: PlaybackOptions;
     readonly identity: string;
     readonly selections = new Map<SubtitleSlot, symbol>();
     readonly desiredTracks = new Map<SubtitleSlot, number>();
     readonly diagnostics: { stage: string; slot: SubtitleSlot; trackIndex: number; time: number }[] = [];
-    disposed = false;
-    readonly subtitleResources = new SubtitleResourceCache<string>(16 * 1024 * 1024, 16);
-    readonly fontResources = new SubtitleResourceCache<Uint8Array<ArrayBuffer>>(64 * 1024 * 1024, 64);
-    readonly fontPlans = new Map<number, string[]>();
     prefetchTimer?: number;
     prefetch?: { index: number; controller: AbortController };
-    prefetchAttempted = false;
+    readonly prefetchAttempted = new Set<number>();
+    readonly preparedSubtitles = new Map<number, PreparedSubtitle>();
+    defaultFont?: Uint8Array<ArrayBuffer>;
+    backgroundStarted = false;
+    backgroundNotified = false;
+    deliveryResolved = false;
 
     constructor(readonly options: Options) {
-        this.playback = options.getPlaybackOptions();
+        super(options.getPlaybackOptions(), options.getSubtitleUrl);
         this.identity = JSON.stringify([
             this.playback.item.ServerId, this.playback.item.Id, this.playback.mediaSource.Id,
             this.playback.transcodingOffsetTicks || 0
@@ -127,6 +104,7 @@ export class FinwebPlaybackSession {
         if (!track) {
             this.clear(slot === 0 ? undefined : slot);
             this.options.renderLegacy(null, slot);
+            this.schedulePrefetch();
             return;
         }
 
@@ -147,7 +125,6 @@ export class FinwebPlaybackSession {
                     request.diagnostic = diagnostic;
                     return this.createRenderer(track, slot, request);
                 });
-                if (current() && this.pipeline.getActiveTrackIndex(slot) === index) this.schedulePrefetch(track);
             } else {
                 this.pipeline.clear(slot);
                 this.options.renderLegacy(track, slot);
@@ -159,6 +136,8 @@ export class FinwebPlaybackSession {
             this.restoreDesiredTrack(slot, restoredTrackIndex);
             this.options.onStateChange?.({ slot, trackIndex: index, state: 'failed', error,
                 restoredTrackIndex });
+        } finally {
+            if (current()) this.schedulePrefetch();
         }
     }
 
@@ -173,12 +152,18 @@ export class FinwebPlaybackSession {
     }
 
     async refreshDeliveryMethods(isCurrent: () => boolean) {
+        if (this.deliveryResolved) return;
         if (this.playback.playMethod !== 'DirectPlay' && this.options.burnInWhenTranscoding()) {
             const sessions = await this.getSessions();
-            if (isCurrent()) this.updateDeliveryMethods(sessions[0]?.TranscodingInfo);
+            if (!isCurrent()) return;
+            const info = sessions[0]?.TranscodingInfo;
+            this.updateDeliveryMethods(info);
+            // Startup may precede server session registration; do not freeze an unknown mode.
+            if (typeof info?.IsVideoDirect !== 'boolean') return;
         } else {
             this.updateDeliveryMethods();
         }
+        this.deliveryResolved = true;
     }
 
     updateDeliveryMethods(info?: { IsVideoDirect?: boolean | null } | null) {
@@ -209,15 +194,15 @@ export class FinwebPlaybackSession {
         if (this.disposed) return;
         this.disposed = true;
         this.stopPrefetch();
-        this.subtitleResources.dispose();
-        this.fontResources.dispose();
-        this.fontPlans.clear();
+        this.disposeResources();
         this.diagnostic.record('source-disposed', { source: this.diagnostic.id });
         for (const event of this.mediaEvents) this.videoElement.removeEventListener(event, this.onMediaEvent);
         this.selections.clear();
         this.desiredTracks.clear();
         this.pipeline.dispose();
         this.selectionDiagnostics.clear();
+        this.preparedSubtitles.clear();
+        this.defaultFont = undefined;
     }
 
     onMediaEvent = (event: Event) => {
@@ -226,85 +211,93 @@ export class FinwebPlaybackSession {
             playbackRate: this.videoElement.playbackRate, paused: this.videoElement.paused });
     };
 
-    api() {
-        const api = ServerConnections.getApiClient(this.playback.item.ServerId);
-        if (!api) throw new Error('Jellyfin server connection is unavailable');
-        return api;
-    }
-
     stopPrefetch() {
         window.clearTimeout(this.prefetchTimer);
+        if (this.prefetch) this.prefetchAttempted.delete(this.prefetch.index);
         this.prefetch?.controller.abort('selection-cancelled');
         this.prefetch = undefined;
     }
 
-    schedulePrefetch(selected: SessionTrack) {
-        if (this.prefetchAttempted || !selected.Language) return;
-        const isAss = (track: SessionTrack) => ASS_CODECS.includes((track.Codec || '').toLowerCase());
-        const alternative = this.playback.mediaSource.MediaStreams.find(track =>
-            track.Type === 'Subtitle' && track.Index !== selected.Index
-            && track.Language?.toLowerCase() === selected.Language?.toLowerCase()
-            && !!track.IsForced === !!selected.IsForced
-            && track.DeliveryMethod === 'External' && this.options.useManagedTrack(track)
-            && isAss(track) !== isAss(selected));
-        if (!alternative) return;
+    backgroundTracks() {
+        return this.playback.mediaSource.MediaStreams.filter(track =>
+            track.Type === 'Subtitle' && track.DeliveryMethod === 'External'
+            && this.options.useManagedTrack(track));
+    }
+
+    schedulePrefetch(delay = 1500) {
+        if (this.disposed || this.prefetch) return;
         window.clearTimeout(this.prefetchTimer);
         this.prefetchTimer = window.setTimeout(() => {
             if (this.disposed || [...this.pipeline.slots.values()].some(state => state.loading)) return;
-            this.prefetchAttempted = true;
+            const tracks = this.backgroundTracks();
+            if (tracks.length && tracks.every(track => this.preparedSubtitles.has(track.Index))) {
+                if (this.backgroundStarted && !this.backgroundNotified) {
+                    this.backgroundNotified = true;
+                    this.diagnostic.record('prefetch-all-ready', { count: tracks.length });
+                    this.options.onBackgroundSubtitlesReady?.();
+                }
+                return;
+            }
+            const alternative = tracks.find(track => !this.preparedSubtitles.has(track.Index)
+                && !this.prefetchAttempted.has(track.Index));
+            if (!alternative) return;
+            this.prefetchAttempted.add(alternative.Index);
+            this.backgroundStarted = true;
             const controller = new AbortController();
             this.prefetch = { index: alternative.Index, controller };
             const diagnostic = new SubtitleDiagnosticTrace({ source: this.diagnostic.id, trackIndex: alternative.Index });
             const timeout = window.setTimeout(() => controller.abort('preparation-timeout'), 30_000);
             diagnostic.record('prefetch-start');
-            // One alternate track per video, sequential requests, never a renderer.
+            // Prepare every downloadable text track, one at a time, without creating renderers.
             void (async () => {
-                await this.loadContent(alternative, controller.signal, diagnostic);
-                if (isAss(alternative)) {
-                    await this.loadFonts(alternative, url => this.loadFont(url, controller.signal, diagnostic), controller.signal, diagnostic, 1);
-                    await this.loadFont(defaultFontUrl, controller.signal, diagnostic);
+                if (ASS_CODECS.includes((alternative.Codec || '').toLowerCase())) {
+                    await this.loadDefaultFont(controller.signal, diagnostic);
                 }
-                if (!controller.signal.aborted) diagnostic.record('prefetch-ready');
+                await this.prepareResources(alternative, controller.signal, diagnostic, 1);
+                if (!controller.signal.aborted && this.preparedSubtitles.has(alternative.Index)) diagnostic.record('prefetch-ready');
             })().catch(() => diagnostic.record('prefetch-unavailable')).finally(() => {
                 window.clearTimeout(timeout);
                 controller.abort('selection-cancelled');
-                if (this.prefetch?.controller === controller) this.prefetch = undefined;
+                if (this.prefetch?.controller === controller) {
+                    this.prefetch = undefined;
+                    this.schedulePrefetch(0);
+                }
             });
-        }, 1500);
+        }, delay);
     }
 
-    async readResource(url: string, signal: AbortSignal, kind: 'subtitle' | 'font', diagnostic: SubtitleDiagnosticTrace) {
-        ensureResourceActive(signal);
-        const response = await fetchSubtitleResource(url, { signal, diagnostic, kind,
-            abortReason: () => signal.reason === 'preparation-timeout' ? 'preparation-timeout' : 'selection-cancelled' });
-        diagnostic.record(`${kind}-http`, { status: response.status });
-        if (!response.ok) throw new Error(`Subtitle resource HTTP ${response.status}`);
-        return response;
+    async loadDefaultFont(signal: AbortSignal, diagnostic: SubtitleDiagnosticTrace) {
+        if (this.defaultFont) return this.defaultFont;
+        const font = await this.loadFont(defaultFontUrl, signal, diagnostic);
+        if (!this.disposed && !signal.aborted) this.defaultFont = font;
+        return font;
     }
 
-    loadContent(track: SessionTrack, signal: AbortSignal, diagnostic: SubtitleDiagnosticTrace) {
-        const url = this.options.getSubtitleUrl(track, this.playback.item);
-        const key = JSON.stringify([track.Index, track.Codec, url]);
-        const cacheTrace = new SubtitleDiagnosticTrace({ ...diagnostic.details, parentTrace: diagnostic.id, resourceKind: 'subtitle' });
-        return this.subtitleResources.load(key, signal, async sharedSignal => diagnostic.measure('subtitle-download', async () => {
-            const response = await diagnostic.measure('subtitle-response', () => this.readResource(url, sharedSignal, 'subtitle', diagnostic));
-            const content = await diagnostic.measure('subtitle-body', () => response.text());
-            if (!ASS_CODECS.includes((track.Codec || '').toLowerCase()) && !/^\uFEFF?WEBVTT(?:\s|$)/.test(content)) {
-                throw new Error('Server did not return WebVTT subtitles');
+    async prepareResources(track: SessionTrack, signal: AbortSignal, diagnostic: SubtitleDiagnosticTrace, concurrency = 2) {
+        const cached = this.preparedSubtitles.get(track.Index);
+        if (cached) {
+            diagnostic.record('prepared-subtitle-hit');
+            return cached;
+        }
+        let fontsComplete = true;
+        const read = async (url: string) => {
+            try {
+                return await this.loadFont(url, signal, diagnostic);
+            } catch (error) {
+                fontsComplete = false;
+                throw error;
             }
-            return content;
-        }), cacheTrace);
-    }
-
-    loadFont(url: string, signal: AbortSignal, diagnostic: SubtitleDiagnosticTrace) {
-        const cacheTrace = new SubtitleDiagnosticTrace({ ...diagnostic.details, parentTrace: diagnostic.id, resourceKind: 'font' });
-        return this.fontResources.load(url, signal, async sharedSignal => diagnostic.measure('font-download', async () => {
-            const response = await this.readResource(url, sharedSignal, 'font', diagnostic);
-            const bytes = new Uint8Array(await response.arrayBuffer());
-            if (!bytes.byteLength) throw new Error('Empty subtitle font');
-            diagnostic.record('font-bytes', { bytes: bytes.byteLength });
-            return bytes;
-        }), cacheTrace);
+        };
+        const isAss = ASS_CODECS.includes((track.Codec || '').toLowerCase());
+        const [content, fonts] = await Promise.all([
+            this.loadContent(track, signal, diagnostic),
+            isAss ? diagnostic.measure('fonts-total', () => this.loadFonts(track, read, signal, diagnostic, concurrency)) : Promise.resolve([])
+        ]);
+        if (this.disposed || signal.aborted) throw new Error('Subtitle preparation cancelled');
+        const prepared = { content, fonts };
+        // Retain complete tracks for this source even when the bounded resource cache evicts files.
+        if (fontsComplete) this.preparedSubtitles.set(track.Index, prepared);
+        return prepared;
     }
 
     async createRenderer(track: SessionTrack, slot: SubtitleSlot, request: SubtitleLoadRequest) {
@@ -316,25 +309,24 @@ export class FinwebPlaybackSession {
         const timeout = window.setTimeout(() => {
             controller.abort('preparation-timeout');
         }, 30_000);
-        let renderer: JassubRenderer | NativeTextRenderer | undefined;
+        let renderer: SubtitleRenderer | undefined;
         const cancelRenderer = request.onCancel(() => renderer?.dispose());
-        const read = (url: string) => this.loadFont(url, controller.signal, diagnostic);
         try {
             this.record('fetching', slot, track.Index);
-            const contentPromise = this.loadContent(track, controller.signal, diagnostic);
-            // Attach rejection handling immediately while font lookup is pending.
             const isAss = ASS_CODECS.includes((track.Codec || '').toLowerCase());
-            const [content, fonts] = await Promise.all([
-                contentPromise,
-                isAss ? diagnostic.measure('fonts-total', () => this.loadFonts(track, read, controller.signal, diagnostic)) : Promise.resolve([])
-            ]);
+            const { content, fonts } = await this.prepareResources(track, controller.signal, diagnostic);
             if (!request.isCurrent() || controller.signal.aborted) throw new Error('Subtitle load cancelled or timed out');
             const baseOffset = (this.playback.transcodingOffsetTicks || 0) / 10_000_000;
             if (isAss) {
-                renderer = new JassubRenderer({ video: this.videoElement, content, fonts: fonts.map(font => font.slice()), baseOffset, request,
-                    loadDefaultFont: async signal => (await this.loadFont(defaultFontUrl, signal, diagnostic)).slice() });
+                diagnostic.record('ass-libass');
                 this.record('initializing-ass', slot, track.Index);
-                await diagnostic.measure('ass-initialize', () => (renderer as JassubRenderer).initialize());
+                const defaultFont = await this.loadDefaultFont(controller.signal, diagnostic);
+                const videoStream = this.playback.mediaSource.MediaStreams.find(stream => stream.Type === 'Video');
+                renderer = await diagnostic.measure('ass-initialize', () => createPreparedLibassWasmRenderer({
+                    video: this.videoElement, content, fonts: fonts.map(font => font.slice()),
+                    defaultFont: defaultFont.slice(), baseOffset,
+                    targetFps: videoStream?.ReferenceFrameRate || 24, request
+                }));
             } else {
                 renderer = new NativeTextRenderer(this.videoElement, content, baseOffset, this.options.getCueLine(slot));
                 await diagnostic.measure('webvtt-parse', () => (renderer as NativeTextRenderer).load(request));
@@ -343,6 +335,9 @@ export class FinwebPlaybackSession {
             return renderer;
         } catch (error) {
             renderer?.dispose();
+            if (ASS_CODECS.includes((track.Codec || '').toLowerCase()) && !this.defaultFont) {
+                this.preparedSubtitles.delete(track.Index);
+            }
             throw error;
         } finally {
             window.clearTimeout(timeout);
@@ -350,75 +345,6 @@ export class FinwebPlaybackSession {
             cancel();
             cancelRenderer();
         }
-    }
-
-    async loadFonts(track: SessionTrack, read: (url: string) => Promise<Uint8Array<ArrayBuffer>>, signal: AbortSignal, diagnostic = new SubtitleDiagnosticTrace(), concurrency = 2) {
-        ensureResourceActive(signal);
-        const cachedPlan = this.fontPlans.get(track.Index);
-        if (cachedPlan) {
-            diagnostic.record('font-plan-hit', { count: cachedPlan.length });
-            const loaded = await this.readFonts(cachedPlan, read, signal, diagnostic, concurrency);
-            if (loaded.length === cachedPlan.length) return loaded;
-            this.fontPlans.delete(track.Index);
-            const attachments = this.attachmentUrls().filter(url => !cachedPlan.includes(url));
-            loaded.push(...await this.readFonts(attachments, read, signal, diagnostic, concurrency));
-            return loaded;
-        }
-        const api = this.api();
-        const { item, mediaSource } = this.playback;
-        const bridge = await diagnostic.measure('font-bridge', () => resolveSubtitleFontBridge(api, item.Id, mediaSource.Id, track.Index));
-        diagnostic.record('font-bridge-result', { fullyResolved: bridge.fullyResolved, count: bridge.fontUrls.length });
-        ensureResourceActive(signal);
-        const attachments = this.attachmentUrls();
-        const urls = bridge.fullyResolved ? [...bridge.fontUrls] : [...bridge.fontUrls, ...attachments];
-        try {
-            const config = await diagnostic.measure('font-config', () => withSubtitleTimeout(api.getNamedConfiguration('encoding'), 'Font configuration', 5_000)) as { EnableFallbackFont?: boolean };
-            ensureResourceActive(signal);
-            if (config.EnableFallbackFont) {
-                const list = await diagnostic.measure('font-list', () => withSubtitleTimeout(api.getJSON(api.getUrl('FallbackFont/Fonts', { ApiKey: api.accessToken() })), 'Fallback font list', 5_000)) as { Name: string }[];
-                urls.push(...list.map(font => api.getUrl(`FallbackFont/Fonts/${encodeURIComponent(font.Name)}`, { ApiKey: api.accessToken() })));
-            }
-        } catch {
-            // Non-admin users or older servers may not expose this configuration.
-        }
-        ensureResourceActive(signal);
-        const uniqueUrls = [...new Set(urls)];
-        const loaded = await this.readFonts(uniqueUrls, read, signal, diagnostic, concurrency);
-        // Reuse the complete set we could actually load for this playback even
-        // when optional Bridge/configuration discovery was unavailable.
-        if (!this.disposed && uniqueUrls.length && loaded.length === uniqueUrls.length) {
-            if (this.fontPlans.size >= 16) this.fontPlans.delete(this.fontPlans.keys().next().value!);
-            this.fontPlans.set(track.Index, uniqueUrls);
-        } else if (bridge.fullyResolved && loaded.length < uniqueUrls.length) {
-            loaded.push(...await this.readFonts(attachments.filter(url => !urls.includes(url)), read, signal, diagnostic, concurrency));
-        }
-        return loaded;
-    }
-
-    attachmentUrls() {
-        return (this.playback.mediaSource.MediaAttachments || [])
-            .filter(font => FONT_TYPES.test(font.MimeType || ''))
-            .map(font => this.api().getUrl(font.DeliveryUrl));
-    }
-
-    async readFonts(urls: string[], read: (url: string) => Promise<Uint8Array<ArrayBuffer>>, signal: AbortSignal, diagnostic: SubtitleDiagnosticTrace, concurrency: number) {
-        const loaded: Uint8Array<ArrayBuffer>[] = [];
-        // Keep font priority deterministic while bounding simultaneous downloads.
-        for (let index = 0; index < urls.length; index += concurrency) {
-            ensureResourceActive(signal);
-            const batch = await Promise.all(urls.slice(index, index + concurrency).map(async url => {
-                try {
-                    return await read(url);
-                } catch {
-                    diagnostic.record('font-unavailable');
-                    return undefined;
-                }
-            }));
-            loaded.push(...batch.filter((font): font is Uint8Array<ArrayBuffer> => !!font));
-        }
-        ensureResourceActive(signal);
-        diagnostic.record('fonts-ready', { count: loaded.length });
-        return loaded;
     }
 }
 /* eslint-enable compat/compat */

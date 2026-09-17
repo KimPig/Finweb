@@ -1,130 +1,137 @@
 # Finweb
 
-Finweb is a customized Jellyfin Web client based on official Jellyfin Web 12.0.
-The current development version is **Finweb 12.0.0**.
+A customized Jellyfin web client with a redesigned interface and playback
+improvements, built for browsing your library and watching with subtitles.
 
-This first source snapshot preserves the desktop sidebar, theme and preference
-changes, playback controls, JASSUB integration, subtitle resource caching and
-diagnostics before comparing replacement player frameworks.
+Finweb brings a fixed desktop sidebar, a built-in square-edged theme and practical
+playback controls to your existing Jellyfin server. Your libraries, accounts and
+watch history stay on Jellyfin; Finweb changes the web experience.
 
-## Development status
+It is an independent project, not an official Jellyfin release or a media server.
 
-This is a test build, not a stable subtitle release. Intermittent subtitle
-non-display that recovers after seeking remains unresolved. Initial resource
-downloads and optional font discovery can still be slow. Successful automated
-tests do not establish compatibility with every server or browser.
+## A Redesigned Interface
 
-See [PLAYBACK.md](PLAYBACK.md) for the current playback implementation, tests,
-diagnostic capture and visible local preview instructions. The local `dist`
-build, dependencies and user diagnostic downloads are not committed.
+**Your library stays within reach.** A permanent desktop sidebar keeps Home,
+Favorites, libraries and account actions together, while separate header groups
+organize account tools, library counts and sorting controls. Bottom pagination
+lets you move to the next page without scrolling back to the top.
 
-The inherited upstream patch-release workflow is disabled for this repository.
-Pushing this snapshot does not publish a Finweb release. [BRIDGE.md](BRIDGE.md)
-and the `patches` directory describe the older enhancement fork, not the full
-current Finweb source or its release process.
+**A complete theme, without extra imports.** Square-edged controls, dark surfaces
+and blue accents are built in. Detail pages group metadata with the overview,
+and compact episode rows keep a series easy to scan. Management pages retain
+Jellyfin's familiar dashboard styling.
 
----
+## Playback Improvements
 
-## Original Enhancement Fork Notes
+- **Return to Home without starting over.** The pre-playback Home stays available.
+  Continue Watching and Next Up refresh after a successful stop report, keeping
+  the existing rows visible while new data arrives.
+- **Subtitles prepared in the background.** The selected subtitle takes priority;
+  other downloadable text tracks are prepared and reused during the video.
+  ASS/SSA uses libass-wasm, while SRT/WebVTT uses native text tracks.
+- **Compact seek previews.** Images display at 85% of the original size, with time
+  and chapter names underneath. An opaque background and loading indicator keep
+  the preview readable; a failed image falls back to text.
+- **Convenient playback controls.** Hold for 2x speed, use intro/outro prompts
+  coordinated with Up Next, and keep Jellyfin's resume, quality and audio controls.
 
-This repository is a small compatibility fork of the official
-[Jellyfin Web](https://github.com/jellyfin/jellyfin-web) project. It keeps the
-upstream Web client as its base while adding a focused playback patch for a
-Windows Jellyfin server.
+## Make It Your Own
 
-## Added features
+Keep using server branding and custom CSS, or add JavaScript directly in Branding
+settings. Multiple external script URLs and inline code can work together, with
+a safe mode for recovery. Settings are stored per server, so you do not have to
+enter them again on each device using Finweb.
 
-- **Subtitle Font Bridge compatibility:** resolves the ASS/SSA font families
-  used by the selected subtitle through the Subtitle Font Bridge server plugin,
-  then preloads only the matching server-installed fonts. Embedded MKV fonts remain a
-  fallback when the plugin is unavailable or cannot resolve every family.
-- **Reliable text-subtitle switching:** manages ASS/SSA and SRT renderer
-  lifecycles explicitly, cancels obsolete requests, synchronizes seek and
-  buffering transitions, and restores the previous selection if a replacement
-  fails. Jellyfin's original fallback remains available for unsupported paths.
-- **Hold for 2× playback:** temporarily plays at 2× while Space, the primary
-  mouse button, or a touch press is held; playback speed and normal controls
-  are restored on release.
-- **Outro skip with Up Next:** keeps the outro skip button visible when Next
-  Video information is enabled and animates it above the displayed Up Next
-  card instead of hiding it.
+Mobile visitors get links to both Findroid and Swiftfin, including visitors in
+supported Jellyfin mobile wrappers. They can close the notice for the current
+visit or choose not to show it again on that browser/app.
 
-The original enhancement fork used automated upstream patch releases. That
-process is retained for reference only and is not enabled for Finweb.
+See [Customizations](CHANGE_PLAN.md) for the maintained behavior and
+[Playback](PLAYBACK.md) for the subtitle and preview implementation.
 
----
+## Version Numbers
 
-<h1 align="center">Jellyfin Web</h1>
-<h3 align="center">Part of the <a href="https://jellyfin.org">Jellyfin Project</a></h3>
+Finweb versions use **official Web version + Finweb revision**:
 
----
+```text
+12.1.0
+---- -
+ |   +-- Finweb revision: 0, 1, 2, ...
+ +------ Official Jellyfin Web version: 12.1
+```
 
-<p align="center">
-<img alt="Logo Banner" src="https://raw.githubusercontent.com/jellyfin/jellyfin-ux/master/branding/SVG/banner-logo-solid.svg?sanitize=true"/>
-<br/>
-<br/>
-<a href="https://github.com/jellyfin/jellyfin-web">
-<img alt="GPL 2.0 License" src="https://img.shields.io/github/license/jellyfin/jellyfin-web.svg"/>
-</a>
-<a href="https://github.com/jellyfin/jellyfin-web/releases">
-<img alt="Current Release" src="https://img.shields.io/github/release/jellyfin/jellyfin-web.svg"/>
-</a>
-<a href="https://translate.jellyfin.org/projects/jellyfin/jellyfin-web/?utm_source=widget">
-<img src="https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-web/svg-badge.svg" alt="Translation Status"/>
-</a>
-<br/>
-<a href="https://opencollective.com/jellyfin">
-<img alt="Donate" src="https://img.shields.io/opencollective/all/jellyfin.svg?label=backers"/>
-</a>
-<a href="https://features.jellyfin.org">
-<img alt="Feature Requests" src="https://img.shields.io/badge/fider-vote%20on%20features-success.svg"/>
-</a>
-<a href="https://matrix.to/#/+jellyfin:matrix.org">
-<img alt="Chat on Matrix" src="https://img.shields.io/matrix/jellyfin:matrix.org.svg?logo=matrix"/>
-</a>
-<a href="https://www.reddit.com/r/jellyfin">
-<img alt="Join our Subreddit" src="https://img.shields.io/badge/reddit-r%2Fjellyfin-%23FF5700.svg"/>
-</a>
-</p>
+For example, `12.1.0` and `12.1.1` use the same official Web version, with the
+last number identifying Finweb-specific revisions. When a new official Web
+version is adopted, the prefix changes and the Finweb revision starts at `.0`.
+These are client version numbers, not the Jellyfin Server version.
 
-Jellyfin Web is the frontend used for most of the clients available for end users, such as desktop browsers, Android, and iOS. We welcome all contributions and pull requests! If you have a larger feature in mind please open an issue so we can discuss the implementation before you start. Translations can be improved very easily from our <a href="https://translate.jellyfin.org/projects/jellyfin/jellyfin-web">Weblate</a> instance. Look through the following graphic to see if your native language could use some work!
+Current development version: **Finweb 12.1.0**.
 
-<a href="https://translate.jellyfin.org/engage/jellyfin/?utm_source=widget">
-<img src="https://translate.jellyfin.org/widgets/jellyfin/-/jellyfin-web/multi-auto.svg" alt="Detailed Translation Status"/>
-</a>
+## Build and Try
 
-## Build Process
+Use Node.js from [.nvmrc](.nvmrc) (currently Node 24), npm and a terminal in the
+repository directory:
 
-### Dependencies
+```sh
+npm ci
+npm run build:production
+```
 
-- [Node.js](https://nodejs.org/en/download)
-- npm (included in Node.js)
+The output is `dist/`. Serve it over HTTP rather than opening `index.html` as a
+local file. With Python 3 installed:
 
-### Getting Started
+```sh
+python -m http.server 8097 --bind 127.0.0.1 --directory dist
+```
 
-1. Clone or download this repository.
+Open [the local preview](http://127.0.0.1:8097/), choose a Jellyfin server and sign
+in. On Windows, [Start-Preview.cmd](scripts/Start-Preview.cmd) runs the same server
+in a visible console. It serves the existing build; it does not build or hot-reload
+source changes. Stop it with Ctrl+C and use an unused port if necessary.
 
-   ```sh
-   git clone https://github.com/jellyfin/jellyfin-web.git
-   cd jellyfin-web
-   ```
+To test from another device on a trusted LAN, use `--bind 0.0.0.0` instead and
+connect to this computer's LAN address. Firewall access may be required. This
+development file server is not a production deployment service.
 
-2. Install build dependencies in the project directory.
+## Deployment and Settings
 
-   ```sh
-   npm install
-   ```
+Deploy the **contents of `dist/`** as the web frontend, either through your
+Jellyfin installation's configured web directory or a separate web host. The
+correct directory or container mount depends on your deployment; do not replace
+the server's database, configuration or media directories. Keep a backup of the
+previous frontend and reload the browser after replacement.
 
-3. Run the web client with webpack for local development.
+Finweb changes the web frontend, not Jellyfin Server or separately installed
+native clients. The Web baseline number is not a promise of compatibility with
+every server, native wrapper, TV browser or transcoding setup.
 
-   ```sh
-   npm start
-   ```
+See [Configuration](CONFIGURATION.md) for branding, CSS, custom JavaScript,
+safe mode, server selection and mobile notices. Personal backgrounds and server
+addresses are not required in the source; configure them on your server.
 
-4. Build the client with sourcemaps available.
+## Development and Releases
 
-   ```sh
-   npm run build:development
-   ```
+[Contributing](CONTRIBUTING.md) covers development checks and browser fixtures.
+Regular push/PR workflows build, check and upload a `finweb-dist` Actions artifact.
+Pushing a matching version tag, such as `v12.1.0`, triggers the separate release
+workflow: validate versions, check types/tests, build, then publish ZIP and tar.gz
+frontend packages with SHA-256 checksums. It runs only in `KimPig/Finweb`.
 
-Review the [Contributing Guide](./CONTRIBUTING.md) for more information on our process and tech stack.
+An ordinary source push does not publish a release, and a release does not install
+itself on a Jellyfin server. See [the release procedure](CONTRIBUTING.md#distribution-checklist)
+before creating a version tag.
+
+Build output, dependencies, local backups, private handoff documents and exported
+subtitle diagnostics are excluded from Git. Only maintained source, tests,
+configuration and public documentation belong in commits.
+
+## Project and Credits
+
+- [KimPig/Finweb](https://github.com/KimPig/Finweb): Finweb source and issue reports.
+- [Upstream provenance](UPSTREAM.md): official baseline commits and update procedure.
+- [Jellyfin Web](https://github.com/jellyfin/jellyfin-web): the original project.
+- [Contributors](CONTRIBUTORS.md): inherited contributor credits.
+
+The integrated theme includes adaptations of Scyfin 1.4.8 and subsequent Finweb
+styling. Upstream notices and third-party licenses must be retained.
+The repository declares GPL-2.0-or-later; see [LICENSE](LICENSE).

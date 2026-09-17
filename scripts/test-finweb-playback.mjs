@@ -2,14 +2,14 @@
 /* eslint-disable @stylistic/max-statements-per-line, sonarjs/cognitive-complexity, sonarjs/void-use, no-void -- Sequential browser scenarios and an explicit HTTP fixture router. */
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
-import { readFile, readdir, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
 import ts from 'typescript';
-import { runInNewContext } from 'node:vm';
+import { compile } from 'sass';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ? pathToFileURL(process.env.PLAYWRIGHT_MODULE).href : 'playwright');
@@ -25,56 +25,15 @@ const videoBytes = await readFile(videoPath);
 const hlsEncoded = spawnSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-i', videoPath,
     '-c', 'copy', '-hls_time', '2', '-hls_playlist_type', 'vod', '-hls_segment_filename', path.join(temp, 'segment%d.ts'), path.join(temp, 'master.m3u8')], { windowsHide: true });
 assert.equal(hlsEncoded.status, 0, hlsEncoded.stderr?.toString());
-const font = await readFile(path.join(root, 'node_modules/jassub/dist/default.woff2'));
+const font = await readFile(path.join(root, 'node_modules/@jellyfin/libass-wasm/dist/js/default.woff2'));
 const bundle = async options => (await build({ absWorkingDir: root, bundle: true, write: false,
     format: 'esm', platform: 'browser', logLevel: 'silent', ...options })).outputFiles[0].text;
-let engine = await bundle({ entryPoints: ['node_modules/jassub/dist/jassub.js'] });
-let productionFiles = [];
-if (process.env.FINWEB_PRODUCTION_ENGINE) {
-    const files = await readdir(path.join(root, 'dist'));
-    productionFiles = files;
-    const jassubFile = files.find(file => file.startsWith('node_modules.jassub.') && file.endsWith('.chunk.js'));
-    assert.ok(jassubFile, 'Build production before testing its renderer assets');
-    const code = await readFile(path.join(root, 'dist', jassubFile), 'utf8');
-    const moduleId = [...code.slice(0, code.indexOf('webYCbCrMap')).matchAll(/[,{](\d{1,12}):function\(/g)].at(-1)[1];
-    const modules = new Map();
-    for (const file of files.filter(name => name.endsWith('.js') && name !== 'runtime.bundle.js')) {
-        const source = await readFile(path.join(root, 'dist', file), 'utf8');
-        if (!source.includes('self.webpackChunk||[]).push')) continue;
-        const context = { self: { webpackChunk: [] } };
-        // Locally built webpack registration code only, in a context without Node APIs.
-        // eslint-disable-next-line sonarjs/code-eval
-        runInNewContext(source, context, { timeout: 1000 });
-        for (const entry of context.self.webpackChunk) {
-            for (const [id, implementation] of Object.entries(entry[1])) modules.set(id, { file, implementation });
-        }
-    }
-    const dependencies = new Set();
-    const visited = new Set();
-    function visit(id) {
-        if (visited.has(id)) return;
-        visited.add(id);
-        const record = modules.get(id);
-        assert.ok(record, `Webpack module ${id} must be emitted`);
-        dependencies.add(record.file);
-        const source = record.implementation.toString();
-        const requireName = source.match(/^function\([^,)]*,[^,)]*,(\w+)\)/)?.[1];
-        if (requireName) for (const match of source.matchAll(new RegExp('\\b' + requireName + '\\((\\d+)\\)', 'g'))) visit(match[1]);
-    }
-    visit(moduleId);
-    engine = `for(const file of ${JSON.stringify(['runtime.bundle.js', ...dependencies])}) {
-        await new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='/dist/'+file;script.onload=resolve;script.onerror=reject;document.head.append(script)});
-    }
-    let require;globalThis.webpackChunk.push([[987654321],{},runtime=>{require=runtime}]);
-    export default require(${moduleId}).default;`;
-}
-const worker = await bundle({ entryPoints: ['node_modules/jassub/dist/worker/worker.js'] });
 const playerSource = ts.createSourceFile('plugin.js', await readFile(path.join(root, 'src/plugins/htmlVideoPlayer/plugin.js'), 'utf8'), ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
 const hostImports = new Map();
 for (const statement of playerSource.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
     const specifier = statement.moduleSpecifier.text;
-    if (specifier.includes('FinwebPlaybackSession') || specifier.includes('TextEventRenderer') || specifier === 'lib/jellyfin-apiclient') continue;
+    if (specifier.includes('FinwebPlaybackSession') || specifier.includes('TextEventRenderer') || specifier.includes('subtitles/diagnostics') || specifier === 'lib/jellyfin-apiclient') continue;
     const defaults = {
         debounce: 'fn=>Object.assign(fn,{cancel:()=>{}})',
         browser: '{slow:true,supportsCssAnimation:()=>false}',
@@ -82,6 +41,7 @@ for (const statement of playerSource.statements) {
         itemHelper: '{isLocalItem:()=>false}',
         subtitleAppearanceHelper: '{getStyles:()=>({text:[]}),applyStyles:()=>{}}',
         Screenfull: '{isEnabled:false}', loading: '{show:()=>{},hide:()=>{}}',
+        toast: 'message=>{(window.hostToasts||=[]).push(message)}',
         Events: '{trigger:()=>{}}', globalize: '{translate:key=>key}'
     };
     const named = {
@@ -107,14 +67,17 @@ for (const statement of playerSource.statements) {
     }
     hostImports.set(specifier, content);
 }
+const toastCss = compile(path.join(root, 'src/components/toast/toast.scss')).css;
+const backgroundReadyText = JSON.parse(await readFile(path.join(root, 'src/strings/ko.json'), 'utf8')).FinwebBackgroundSubtitlesReady;
 const fixture = await bundle({
-    external: ['jassub'],
     plugins: [{ name: 'server-adapter', setup(builder) {
         builder.onResolve({ filter: /.*/ }, args => {
             if (args.importer.replaceAll('\\', '/').endsWith('htmlVideoPlayer/plugin.js') && hostImports.has(args.path)) return { path: args.path, namespace: 'host' };
             if (args.path.endsWith('.scss')) return { path: 'styles', namespace: 'host' };
         });
         builder.onLoad({ filter: /.*/, namespace: 'host' }, args => ({ contents: hostImports.get(args.path) || '' }));
+        builder.onResolve({ filter: /^lib\/globalize$/ }, () => ({ path: 'globalize', namespace: 'fixture-globalize' }));
+        builder.onLoad({ filter: /.*/, namespace: 'fixture-globalize' }, () => ({ contents: 'export default {translate:key=>key}' }));
         builder.onResolve({ filter: /^lib\/jellyfin-apiclient$/ }, args => ({ path: args.path, namespace: 'fixture' }));
         builder.onLoad({ filter: /.*/, namespace: 'fixture' }, () => ({ contents: `
             export const ServerConnections = {getApiClient: () => ({
@@ -130,6 +93,8 @@ const fixture = await bundle({
     stdin: { resolveDir: root, contents: `
         import {FinwebPlaybackSession} from './src/plugins/htmlVideoPlayer/FinwebPlaybackSession';
         import {HtmlVideoPlayer} from './src/plugins/htmlVideoPlayer/plugin';
+        import toast from './src/components/toast/toast';
+        import {isSubtitlePrefetchNoticeEnabled} from './src/plugins/htmlVideoPlayer/subtitles/diagnostics';
         const video=document.querySelector('video');
         const changes=[];
         let session;
@@ -145,6 +110,7 @@ const fixture = await bundle({
                     MediaAttachments:[{MimeType:'font/ttf',DeliveryUrl:'attachment.woff2'}]}}),
                 getSubtitleUrl:track=>location.origin+'/subtitles/'+track.Index+(track.Codec==='ass'?'.ass':'.vtt'),
                 onStateChange:change=>changes.push({...change,error:change.error?.message}),
+                onBackgroundSubtitlesReady:()=>{window.backgroundReady=(window.backgroundReady||0)+1;if(isSubtitlePrefetchNoticeEnabled())toast(${JSON.stringify(backgroundReadyText)})},
                 useManagedTrack:()=>true, renderLegacy:()=>{}, prepareManaged:()=>{},
                 burnInWhenTranscoding:()=>playMethod!=='DirectPlay',getCueLine:slot=>slot?-4:-1});
         }
@@ -167,7 +133,7 @@ const fixture = await bundle({
                     playMethod:hls?'Transcode':'DirectPlay',transcodingOffsetTicks:hls?150000000:0,
                     fullscreen:true,playerStartPositionTicks:0});
             },
-            pixels:()=>{const canvas=document.querySelector('.finweb-ass-surface canvas');if(!canvas)return 0;
+            pixels:()=>{const canvas=document.querySelector('.subtitle-pipeline-ass canvas');if(!canvas)return 0;
                 const copy=document.createElement('canvas');copy.width=canvas.width;copy.height=canvas.height;
                 const context=copy.getContext('2d');context.drawImage(canvas,0,0);
                 const bytes=context.getImageData(0,0,copy.width,copy.height).data;
@@ -199,20 +165,16 @@ const server = createServer(async (request, response) => {
             response.end(await readFile(path.join(temp, path.basename(url.pathname))));
             return;
         }
-        if (url.pathname.startsWith('/dist/') || productionFiles.includes(url.pathname.slice(1))) {
-            const file = path.basename(url.pathname);
-            const mime = { '.wasm': 'application/wasm', '.woff2': 'font/woff2' }[path.extname(file)] || 'text/javascript';
-            response.writeHead(200, { 'Content-Type': mime });
-            response.end(await readFile(path.join(root, 'dist', file)));
-            return;
-        }
         if (url.pathname.startsWith('/subtitles/') || url.pathname.startsWith('/SubtitleFontBridge/')) await new Promise(resolve => setTimeout(resolve, delay));
         const send = (type, content, status = 200) => { response.writeHead(status, { 'Content-Type': type }); response.end(content); };
-        if (url.pathname === '/') return send('text/html', '<style>body{margin:0;background:black}#player{position:relative;width:640px;height:360px}video{width:100%;height:100%}</style><div id="player"><video muted playsinline src="/video.mp4"></video></div><script type="importmap">{"imports":{"jassub":"/engine/jassub.js"}}</script><script type="module" src="/fixture.js"></script>');
+        if (url.pathname === '/') return send('text/html', '<html dir="ltr"><link rel="stylesheet" href="/toast.css"><style>body{margin:0;background:black}#player{position:relative;width:640px;height:360px}video{width:100%;height:100%}</style><div id="player"><video muted playsinline src="/video.mp4"></video></div><script type="module" src="/fixture.js"></script>');
+        if (url.pathname === '/toast.css') return send('text/css', toastCss);
         if (url.pathname === '/fixture.js') return send('text/javascript', fixture);
-        if (url.pathname === '/engine/jassub.js') return send('text/javascript', engine);
-        if (url.pathname === '/engine/worker/worker.js') return send('text/javascript', worker);
-        if (url.pathname.endsWith('.wasm')) return send('application/wasm', await readFile(path.join(root, 'node_modules/jassub/dist/wasm', path.basename(url.pathname))));
+        if (/^\/libraries\/subtitles-octopus-worker(?:-legacy)?\.(?:js|wasm)$/u.test(url.pathname)) {
+            const file = path.basename(url.pathname);
+            const mime = file.endsWith('.wasm') ? 'application/wasm' : 'text/javascript';
+            return send(mime, await readFile(path.join(root, process.env.FINWEB_PRODUCTION_ENGINE ? 'dist/libraries' : 'node_modules/@jellyfin/libass-wasm/dist/js', file)));
+        }
         if (url.pathname.endsWith('.woff2')) {
             if (url.pathname.startsWith('/SubtitleFontBridge/')) assert.equal(url.searchParams.get('ApiKey'), 'fixture-token');
             return send('font/woff2', font);
@@ -263,197 +225,233 @@ try {
     }
     await page.goto(`http://127.0.0.1:${server.address().port}/?subtitleDiagnostics=1`);
     await page.waitForFunction(() => !!window.fixture);
-    delay = 800;
-    await page.evaluate(() => { fixture.video.playbackRate = 2; void fixture.video.play(); void fixture.select(7); });
-    await page.waitForFunction(() => fixture.active() === 7 && fixture.pixels() > 50, null, { timeout:30000 }).catch(async error => {
-        console.error(await page.evaluate(() => ({ changes: fixture.changes, diagnostics: fixture.state(), canvases: document.querySelectorAll('canvas').length })));
-        console.error(requests.filter(url => url.startsWith('/dist/')));
-        throw error;
-    });
-    console.log('PASS delayed startup + 2x + real ASS pixels');
-    const startupTiming = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries);
-    assert.ok(startupTiming.some(entry => entry.stage === 'subtitle-response' && entry.phase === 'end' && entry.durationMs >= 750));
-    assert.ok(startupTiming.some(entry => entry.stage === 'ass-worker-ready' && entry.phase === 'end'));
-    await page.evaluate(() => { fixture.video.pause();fixture.video.currentTime = 3; });
-    delay = 0;
-    await page.evaluate(() => window.finwebSubtitleDiagnostics.start());
-    await page.evaluate(() => fixture.select(3));
-    await page.waitForFunction(() => fixture.cues().includes('SRT FIRST'));
-    await page.evaluate(() => fixture.select(7));
-    await page.waitForFunction(() => fixture.active() === 7 && fixture.pixels() > 50);
-    assert.equal(await page.evaluate(() => fixture.cues().length), 0);
-    console.log('PASS SRT to ASS while paused without seeking');
-    const switchingTiming = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries);
-    assert.ok(switchingTiming.some(entry => entry.stage === 'webvtt-first-active-cue'));
-    assert.ok(switchingTiming.some(entry => entry.stage === 'ass-first-render-ack'));
-    const switchTimes = switchingTiming.filter(entry => entry.stage === 'active').map(entry => ({ trackIndex: entry.trackIndex, elapsedMs: entry.elapsedMs }));
-    assert.equal(switchTimes.length, 2);
-    console.log('TIMING local fixture ASS -> SRT, SRT -> ASS:', JSON.stringify(switchTimes));
-    const downloadEvent = page.waitForEvent('download');
-    await page.evaluate(() => window.finwebSubtitleDiagnostics.download());
-    const download = await downloadEvent;
-    assert.equal(download.suggestedFilename(), 'finweb-subtitle-diagnostics.json');
-    const downloaded = JSON.parse(await readFile(await download.path(), 'utf8'));
-    assert.deepEqual(downloaded.entries, JSON.parse(JSON.stringify(switchingTiming)));
-    assert.ok(!JSON.stringify(downloaded).includes('fixture-token'));
-    assert.ok(!JSON.stringify(downloaded).includes('SRT FIRST'));
-    console.log('PASS opt-in timing and private-data-free JSON download');
-    const resourceRequests = () => requests.filter(url => url.startsWith('/subtitles/') || url.startsWith('/SubtitleFontBridge/') || url.endsWith('.woff2') || url === '/encoding');
-    const warmedRequests = resourceRequests().length;
-    failAss = true;
-    bodyDelay = 2300;
-    await page.evaluate(() => fixture.select(-1));
-    await page.evaluate(() => fixture.select(3));
-    await page.waitForFunction(() => fixture.cues().includes('SRT FIRST'));
-    await page.evaluate(() => fixture.select(7));
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    assert.equal(resourceRequests().length, warmedRequests);
-    assert.ok((await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries)).some(entry => entry.stage === 'font-plan-hit'));
-    failAss = false;
-    bodyDelay = 0;
-    console.log('PASS warmed ASS/SRT/font data survives off and renderer replacement with zero new requests even when endpoints stall/fail');
-    await page.evaluate(() => { fixture.reset('body-stall');return fixture.select(7); });
-    bodyDelay = 2300;
-    await page.evaluate(() => window.finwebSubtitleDiagnostics.start());
-    await page.evaluate(() => fixture.select(3));
-    const streamed = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot());
-    assert.equal(streamed.schema, 2);
-    const resource = streamed.entries.filter(entry => entry.resourceKind === 'subtitle');
-    assert.ok(resource.some(entry => entry.stage === 'resource-wait' && entry.bytes === 0));
-    assert.ok(resource.some(entry => entry.stage === 'resource-first-byte' && entry.elapsedMs >= 2200));
-    assert.ok(resource.some(entry => entry.stage === 'resource-wait' && entry.bytes === 40 && entry.idleMs >= 1000));
-    assert.ok(resource.some(entry => entry.stage === 'resource-end' && entry.outcome === 'complete' && entry.elapsedMs >= 4400));
-    assert.ok(resource.every(entry => Number.isFinite(entry.parentTrace)));
-    bodyDelay = 0;
-    await page.evaluate(() => fixture.select(7));
-    console.log('PASS real HTTP headers-first response: late first body byte and mid-body stall are visible separately');
-    await page.evaluate(() => { fixture.video.currentTime = 12; });
-    await page.waitForFunction(() => fixture.pixels() === 0);
-    await page.evaluate(() => { fixture.video.currentTime = 17; });
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    console.log('PASS intentional silent interval and paused seek');
-    delay = 500;
-    await page.evaluate(() => { fixture.reset('cancelled-source');void fixture.select(7);setTimeout(()=>void fixture.select(3), 50); });
-    await page.waitForFunction(() => fixture.active() === 3 && fixture.cues().includes('SRT SECOND'));
-    await page.waitForTimeout(1500);
-    assert.equal(await page.evaluate(() => document.querySelectorAll('.finweb-ass-surface').length), 0);
-    console.log('PASS slow ASS cancelled by newer SRT');
-    await page.evaluate(() => { void fixture.select(7);fixture.select(-1); });
-    await page.waitForTimeout(1500);
-    assert.equal(await page.evaluate(() => fixture.active()), undefined);
-    assert.equal(await page.evaluate(() => document.querySelectorAll('.finweb-ass-surface,track').length), 0);
-    console.log('PASS off cancels pending selection and releases surfaces');
-    delay = 0;failAss = true;
-    await page.evaluate(() => fixture.reset('failure-source'));
-    await page.evaluate(() => fixture.select(3));
-    await page.evaluate(() => fixture.select(7));
-    assert.equal(await page.evaluate(() => fixture.active()), 3);
-    failAss = false;
-    await page.evaluate(() => fixture.select(7));
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    console.log('PASS HTTP failure preserves previous track and retry recovers');
-    bridgeEnabled = false;
-    await page.evaluate(() => fixture.reset('another-item', 15));
-    await page.evaluate(() => { fixture.video.currentTime = 2;return fixture.select(3); });
-    await page.waitForFunction(() => fixture.cues().includes('SRT SECOND'));
-    await page.evaluate(() => fixture.select(7));
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    assert.ok(requests.includes('/attachment.woff2'));
-    console.log('PASS new source timeline offset + missing Bridge attachment fallback');
-    failFontList = true;
-    await page.evaluate(() => { fixture.reset('optional-font-discovery-failure');fixture.video.currentTime = 2;return fixture.select(7); });
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    await page.evaluate(() => fixture.select(3));
-    const beforeOptionalRetry = requests.filter(url => url === '/encoding' || url === '/FallbackFont/Fonts' || url.startsWith('/SubtitleFontBridge/') || url.endsWith('.woff2')).length;
-    failFontConfig = true;
-    await page.evaluate(() => { window.finwebSubtitleDiagnostics.start();return fixture.select(7); });
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    assert.equal(requests.filter(url => url === '/encoding' || url === '/FallbackFont/Fonts' || url.startsWith('/SubtitleFontBridge/') || url.endsWith('.woff2')).length, beforeOptionalRetry);
-    const optionalRetry = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries);
-    assert.ok(optionalRetry.some(entry => entry.stage === 'font-plan-hit'));
-    assert.ok(!optionalRetry.some(entry => entry.stage === 'font-config'));
-    failFontList = false; failFontConfig = false;
-    console.log('PASS unresolved Bridge + denied fallback list: attachment plan is reused without any optional API lookup on SRT -> ASS');
-    sessionDelay = 600;
-    await page.evaluate(() => { fixture.reset('remux', 0, 'Transcode');void fixture.select(7);fixture.select(-1); });
-    await page.waitForTimeout(1500);
-    assert.equal(await page.evaluate(() => fixture.active()), undefined);
-    console.log('PASS slow session lookup cannot override off');
-    await page.evaluate(() => window.finwebSubtitleDiagnostics.start());
-    await page.evaluate(() => fixture.select(7));
-    await page.evaluate(() => fixture.select(3));
-    const delayedSwitches = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries);
-    for (const trackIndex of [7, 3]) {
-        assert.ok(delayedSwitches.some(entry => entry.trackIndex === trackIndex && entry.stage === 'delivery-check' && entry.phase === 'end' && entry.durationMs >= 550));
-        assert.ok(delayedSwitches.some(entry => entry.trackIndex === trackIndex && entry.stage === 'active'));
+    {
+        delay = 800;
+        await page.evaluate(() => { fixture.video.playbackRate = 2; void fixture.video.play(); void fixture.select(7); });
+        await page.waitForFunction(() => fixture.active() === 7 && fixture.pixels() > 50, null, { timeout:30000 }).catch(async error => {
+            console.error(await page.evaluate(() => ({ changes: fixture.changes, diagnostics: fixture.state(), canvases: document.querySelectorAll('canvas').length })));
+            console.error(requests.filter(url => url.startsWith('/dist/')));
+            throw error;
+        });
+        console.log('PASS delayed startup + 2x + real ASS pixels');
+        const startupTiming = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries);
+        assert.ok(startupTiming.some(entry => entry.stage === 'subtitle-response' && entry.phase === 'end' && entry.durationMs >= 750));
+        assert.ok(startupTiming.some(entry => entry.stage === 'ass-initialize' && entry.phase === 'end'));
+        await page.evaluate(() => { fixture.video.pause();fixture.video.currentTime = 3; });
+        delay = 0;
+        await page.evaluate(() => window.finwebSubtitleDiagnostics.start());
+        await page.evaluate(() => fixture.select(3));
+        await page.waitForFunction(() => fixture.cues().includes('SRT FIRST'));
+        await page.evaluate(() => fixture.select(7));
+        await page.waitForFunction(() => fixture.active() === 7 && fixture.pixels() > 50);
+        assert.equal(await page.evaluate(() => fixture.cues().length), 0);
+        console.log('PASS SRT to ASS while paused without seeking');
+        const switchingTiming = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries);
+        assert.ok(switchingTiming.some(entry => entry.stage === 'webvtt-first-active-cue'));
+        const switchTimes = switchingTiming.filter(entry => entry.stage === 'active').map(entry => ({ trackIndex: entry.trackIndex, elapsedMs: entry.elapsedMs }));
+        assert.equal(switchTimes.length, 2);
+        console.log('TIMING local fixture ASS -> SRT, SRT -> ASS:', JSON.stringify(switchTimes));
+        const downloadEvent = page.waitForEvent('download');
+        await page.evaluate(() => window.finwebSubtitleDiagnostics.download());
+        const download = await downloadEvent;
+        assert.equal(download.suggestedFilename(), 'finweb-subtitle-diagnostics.json');
+        const downloaded = JSON.parse(await readFile(await download.path(), 'utf8'));
+        assert.deepEqual(downloaded.entries, JSON.parse(JSON.stringify(switchingTiming)));
+        assert.ok(!JSON.stringify(downloaded).includes('fixture-token'));
+        assert.ok(!JSON.stringify(downloaded).includes('SRT FIRST'));
+        console.log('PASS opt-in timing and private-data-free JSON download');
+        const resourceRequests = () => requests.filter(url => url.startsWith('/subtitles/') || url.startsWith('/SubtitleFontBridge/') || url.endsWith('.woff2') || url === '/encoding');
+        await page.waitForFunction(() => window.finwebSubtitleDiagnostics.snapshot().entries.some(entry => entry.stage === 'prefetch-all-ready'));
+        const warmedRequests = resourceRequests().length;
+        failAss = true;
+        bodyDelay = 2300;
+        await page.evaluate(() => fixture.select(-1));
+        await page.evaluate(() => fixture.select(3));
+        await page.waitForFunction(() => fixture.cues().includes('SRT FIRST'));
+        await page.evaluate(() => fixture.select(7));
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        assert.equal(resourceRequests().length, warmedRequests, JSON.stringify(resourceRequests()));
+        assert.ok((await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries)).some(entry => entry.stage === 'prepared-subtitle-hit'));
+        failAss = false;
+        bodyDelay = 0;
+        console.log('PASS warmed ASS/SRT/font data survives off and renderer replacement with zero new requests even when endpoints stall/fail');
+        await page.evaluate(() => { fixture.reset('body-stall');return fixture.select(7); });
+        bodyDelay = 2300;
+        await page.evaluate(() => window.finwebSubtitleDiagnostics.start());
+        await page.evaluate(() => fixture.select(3));
+        const streamed = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot());
+        assert.equal(streamed.schema, 2);
+        const resource = streamed.entries.filter(entry => entry.resourceKind === 'subtitle');
+        assert.ok(resource.some(entry => entry.stage === 'resource-wait' && entry.bytes === 0));
+        assert.ok(resource.some(entry => entry.stage === 'resource-first-byte' && entry.elapsedMs >= 2200));
+        assert.ok(resource.some(entry => entry.stage === 'resource-wait' && entry.bytes === 40 && entry.idleMs >= 1000));
+        assert.ok(resource.some(entry => entry.stage === 'resource-end' && entry.outcome === 'complete' && entry.elapsedMs >= 4400));
+        assert.ok(resource.every(entry => Number.isFinite(entry.parentTrace)));
+        bodyDelay = 0;
+        await page.evaluate(() => fixture.select(7));
+        console.log('PASS real HTTP headers-first response: late first body byte and mid-body stall are visible separately');
+        await page.evaluate(() => { fixture.video.currentTime = 12; });
+        await page.waitForFunction(() => fixture.pixels() === 0);
+        await page.evaluate(() => { fixture.video.currentTime = 17; });
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        console.log('PASS intentional silent interval and paused seek');
+        delay = 500;
+        await page.evaluate(() => { fixture.reset('cancelled-source');void fixture.select(7);setTimeout(()=>void fixture.select(3), 50); });
+        await page.waitForFunction(() => fixture.active() === 3 && fixture.cues().includes('SRT SECOND'));
+        await page.waitForTimeout(1500);
+        assert.equal(await page.evaluate(() => document.querySelectorAll('.subtitle-pipeline-ass').length), 0);
+        console.log('PASS slow ASS cancelled by newer SRT');
+        await page.evaluate(() => { void fixture.select(7);fixture.select(-1); });
+        await page.waitForTimeout(1500);
+        assert.equal(await page.evaluate(() => fixture.active()), undefined);
+        assert.equal(await page.evaluate(() => document.querySelectorAll('.subtitle-pipeline-ass,track').length), 0);
+        console.log('PASS off cancels pending selection and releases surfaces');
+        delay = 0;failAss = true;
+        await page.evaluate(() => fixture.reset('failure-source'));
+        await page.evaluate(() => fixture.select(3));
+        await page.evaluate(() => fixture.select(7));
+        assert.equal(await page.evaluate(() => fixture.active()), 3);
+        failAss = false;
+        await page.evaluate(() => fixture.select(7));
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        console.log('PASS HTTP failure preserves previous track and retry recovers');
+        bridgeEnabled = false;
+        await page.evaluate(() => fixture.reset('another-item', 15));
+        await page.evaluate(() => { fixture.video.currentTime = 2;return fixture.select(3); });
+        await page.waitForFunction(() => fixture.cues().includes('SRT SECOND'));
+        await page.evaluate(() => fixture.select(7));
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        assert.ok(requests.includes('/attachment.woff2'));
+        console.log('PASS new source timeline offset + missing Bridge attachment fallback');
+        failFontList = true;
+        await page.evaluate(() => { fixture.reset('optional-font-discovery-failure');fixture.video.currentTime = 2;return fixture.select(7); });
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        await page.evaluate(() => fixture.select(3));
+        const beforeOptionalRetry = requests.filter(url => url === '/encoding' || url === '/FallbackFont/Fonts' || url.startsWith('/SubtitleFontBridge/') || url.endsWith('.woff2')).length;
+        failFontConfig = true;
+        await page.evaluate(() => { window.finwebSubtitleDiagnostics.start();return fixture.select(7); });
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        assert.equal(requests.filter(url => url === '/encoding' || url === '/FallbackFont/Fonts' || url.startsWith('/SubtitleFontBridge/') || url.endsWith('.woff2')).length, beforeOptionalRetry);
+        const optionalRetry = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries);
+        assert.ok(optionalRetry.some(entry => entry.stage === 'prepared-subtitle-hit'));
+        assert.ok(!optionalRetry.some(entry => entry.stage === 'font-config'));
+        failFontList = false; failFontConfig = false;
+        console.log('PASS unresolved Bridge + denied fallback list: attachment plan is reused without any optional API lookup on SRT -> ASS');
+        sessionDelay = 600;
+        await page.evaluate(() => { fixture.reset('remux', 0, 'Transcode');void fixture.select(7);fixture.select(-1); });
+        await page.waitForTimeout(1500);
+        assert.equal(await page.evaluate(() => fixture.active()), undefined);
+        console.log('PASS slow session lookup cannot override off');
+        await page.evaluate(() => window.finwebSubtitleDiagnostics.start());
+        await page.evaluate(() => fixture.select(7));
+        await page.evaluate(() => fixture.select(3));
+        const delayedSwitches = await page.evaluate(() => window.finwebSubtitleDiagnostics.snapshot().entries);
+        assert.ok(delayedSwitches.some(entry => entry.trackIndex === 7 && entry.stage === 'delivery-check' && entry.phase === 'end' && entry.durationMs >= 550));
+        for (const trackIndex of [7, 3]) {
+            assert.ok(delayedSwitches.some(entry => entry.trackIndex === trackIndex && entry.stage === 'active'));
+        }
+        assert.ok(delayedSwitches.some(entry => entry.trackIndex === 3 && entry.stage === 'delivery-check' && entry.phase === 'end' && entry.durationMs < 550));
+        console.log('PASS delivery mode is resolved once per source, with no repeated session lookup on switching');
+        sessionDelay = 0;
+        await page.evaluate(() => { fixture.reset();fixture.video.currentTime = 2;return fixture.select(3); });
+        await page.evaluate(() => fixture.select(11, 1));
+        await page.waitForFunction(() => fixture.cues().length === 2);
+        await page.evaluate(() => fixture.select(-1));
+        assert.equal(await page.evaluate(() => fixture.cues().length), 0);
+        await page.evaluate(() => fixture.dispose());
+        console.log('PASS dual tracks + complete cleanup');
+        bridgeEnabled = true;
+        const beforePrefetch = requests.filter(url => url === '/subtitles/3.vtt').length;
+        await page.evaluate(() => { fixture.language('kor');fixture.reset('prefetch-source');window.finwebSubtitleDiagnostics.start();return fixture.select(7); });
+        await page.waitForFunction(() => window.finwebSubtitleDiagnostics.snapshot().entries.some(entry => entry.stage === 'prefetch-all-ready'));
+        assert.equal(requests.filter(url => url === '/subtitles/3.vtt').length, beforePrefetch + 1);
+        assert.equal(await page.locator('.toastVisible:not(.toastHide)').count(), 0);
+        const prefetchedRequests = resourceRequests().length;
+        await page.evaluate(() => fixture.select(3));
+        await page.waitForFunction(() => fixture.cues().includes('SRT FIRST'));
+        await page.evaluate(() => fixture.select(11));
+        await page.waitForFunction(() => fixture.active() === 11);
+        await page.evaluate(() => fixture.select(7));
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        assert.equal(resourceRequests().length, prefetchedRequests);
+        await page.evaluate(() => { window.history.replaceState(null, '', '/?subtitlePrefetchNotice=1');fixture.reset('prefetch-ass-source');window.finwebSubtitleDiagnostics.start();return fixture.select(3); });
+        const notifications = await page.evaluate(() => window.backgroundReady || 0);
+        await page.waitForFunction(() => window.finwebSubtitleDiagnostics.snapshot().entries.some(entry => entry.stage === 'prefetch-all-ready'));
+        assert.equal(await page.evaluate(() => window.backgroundReady), notifications + 1);
+        await page.waitForFunction(text => [...document.querySelectorAll('.toastVisible:not(.toastHide)')].some(toast => {
+            const bounds = toast.getBoundingClientRect();
+            return toast.textContent === text && bounds.left >= 0 && bounds.left < 80
+                && bounds.right <= window.innerWidth && bounds.bottom <= window.innerHeight && bounds.bottom > window.innerHeight - 80;
+        }), backgroundReadyText);
+        const prefetchedAssRequests = resourceRequests().length;
+        failAss = true;
+        await page.evaluate(() => fixture.select(7));
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        assert.equal(resourceRequests().length, prefetchedAssRequests);
+        failAss = false;
+        await page.evaluate(() => fixture.language(undefined));
+        console.log('PASS all three subtitle files prefetched, completion callback, ASS fonts and zero resource requests on activation');
+        await page.evaluate(() => window.history.replaceState(null, '', '/?subtitleDiagnostics=1'));
+        await page.evaluate(() => { window.finwebSubtitleDiagnostics.start();return fixture.host(); });
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        await page.waitForFunction(() => window.finwebSubtitleDiagnostics.snapshot().entries.some(entry => entry.stage === 'prefetch-all-ready'));
+        assert.ok(!(await page.evaluate(() => window.hostToasts || [])).includes('FinwebBackgroundSubtitlesReady'));
+        await page.evaluate(() => window.hostPlayer.setSubtitleStreamIndex(3));
+        await page.waitForFunction(() => Array.from(document.querySelector('video').textTracks).some(track => track.mode === 'showing' && track.activeCues?.length));
+        await page.evaluate(() => window.finishNavigation());
+        await page.waitForTimeout(600);
+        assert.equal(await page.evaluate(() => document.querySelectorAll('.subtitle-pipeline-ass').length), 0);
+        await page.evaluate(() => window.hostPlayer.setSubtitleStreamIndex(7));
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        await page.evaluate(() => window.hostPlayer.stop(true));
+        assert.equal(await page.evaluate(() => document.querySelectorAll('video,track,.subtitle-pipeline-ass').length), 0);
+        await page.waitForTimeout(500);
+        await page.evaluate(() => fixture.host(true));
+        await page.waitForFunction(() => fixture.pixels() > 50);
+        await page.evaluate(() => window.hostPlayer.setSubtitleStreamIndex(3));
+        await page.waitForFunction(() => Array.from(document.querySelector('video').textTracks).some(track => Array.from(track.activeCues || []).some(cue => cue.text === 'SRT SECOND')));
+        await page.evaluate(() => window.hostPlayer.setSubtitleStreamIndex(7));
+        await page.setViewportSize({ width: 390, height: 844 });
+        await page.evaluate(() => {
+            const host = document.querySelector('.videoPlayerContainer');
+            host.style.width = '100vw';
+            host.style.height = '219px';
+        });
+        await page.waitForFunction(() => fixture.pixels() > 50 && document.querySelector('.subtitle-pipeline-ass canvas').getBoundingClientRect().width <= 390);
+        await page.evaluate(() => {
+            const host = document.querySelector('.videoPlayerContainer');
+            host.addEventListener('click', () => { window.fullscreenAttempt = host.requestFullscreen(); }, { once: true });
+        });
+        await page.locator('video').click();
+        await page.evaluate(() => window.fullscreenAttempt);
+        await page.waitForFunction(() => !!document.fullscreenElement && fixture.pixels() > 50);
+        await page.evaluate(() => document.exitFullscreen());
+        await page.evaluate(() => window.hostPlayer.stop(true));
+        await page.waitForTimeout(500);
+        assert.equal(page.workers().length, 0);
+        assert.deepEqual(errors, []);
+        console.log('PASS actual HtmlVideoPlayer entry: direct/HLS, sparse indices, delayed OSD, transcode offset, mobile resize/fullscreen, switching and stop; zero remaining workers or page errors; no screenshots');
     }
-    console.log('PASS shared session lookup delay is attributed in both ASS and SRT directions');
-    sessionDelay = 0;
-    await page.evaluate(() => { fixture.reset();fixture.video.currentTime = 2;return fixture.select(3); });
-    await page.evaluate(() => fixture.select(11, 1));
-    await page.waitForFunction(() => fixture.cues().length === 2);
-    await page.evaluate(() => fixture.select(-1));
-    assert.equal(await page.evaluate(() => fixture.cues().length), 0);
-    await page.evaluate(() => fixture.dispose());
-    console.log('PASS dual tracks + complete cleanup');
-    bridgeEnabled = true;
-    const beforePrefetch = requests.filter(url => url === '/subtitles/3.vtt').length;
-    await page.evaluate(() => { fixture.language('kor');fixture.reset('prefetch-source');window.finwebSubtitleDiagnostics.start();return fixture.select(7); });
-    await page.waitForFunction(() => window.finwebSubtitleDiagnostics.snapshot().entries.some(entry => entry.stage === 'prefetch-ready'));
-    assert.equal(requests.filter(url => url === '/subtitles/3.vtt').length, beforePrefetch + 1);
-    const prefetchedRequests = resourceRequests().length;
-    await page.evaluate(() => fixture.select(3));
-    await page.waitForFunction(() => fixture.cues().includes('SRT FIRST'));
-    await page.evaluate(() => fixture.select(7));
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    assert.equal(resourceRequests().length, prefetchedRequests);
-    await page.evaluate(() => { fixture.reset('prefetch-ass-source');window.finwebSubtitleDiagnostics.start();return fixture.select(3); });
-    await page.waitForFunction(() => window.finwebSubtitleDiagnostics.snapshot().entries.some(entry => entry.stage === 'prefetch-ready'));
-    const prefetchedAssRequests = resourceRequests().length;
-    failAss = true;
-    await page.evaluate(() => fixture.select(7));
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    assert.equal(resourceRequests().length, prefetchedAssRequests);
-    failAss = false;
-    await page.evaluate(() => fixture.language(undefined));
-    console.log('PASS same-language alternate prefetch in both directions, including ASS fonts; zero resource requests on activation');
-    await page.evaluate(() => fixture.host());
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    await page.evaluate(() => window.hostPlayer.setSubtitleStreamIndex(3));
-    await page.waitForFunction(() => Array.from(document.querySelector('video').textTracks).some(track => track.mode === 'showing' && track.activeCues?.length));
-    await page.evaluate(() => window.finishNavigation());
-    await page.waitForTimeout(600);
-    assert.equal(await page.evaluate(() => document.querySelectorAll('.finweb-ass-surface').length), 0);
-    await page.evaluate(() => window.hostPlayer.setSubtitleStreamIndex(7));
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    await page.evaluate(() => window.hostPlayer.stop(true));
-    assert.equal(await page.evaluate(() => document.querySelectorAll('video,track,.finweb-ass-surface').length), 0);
-    await page.waitForTimeout(500);
-    await page.evaluate(() => fixture.host(true));
-    await page.waitForFunction(() => fixture.pixels() > 50);
-    await page.evaluate(() => window.hostPlayer.setSubtitleStreamIndex(3));
-    await page.waitForFunction(() => Array.from(document.querySelector('video').textTracks).some(track => Array.from(track.activeCues || []).some(cue => cue.text === 'SRT SECOND')));
-    await page.evaluate(() => window.hostPlayer.setSubtitleStreamIndex(7));
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.evaluate(() => {
-        const host = document.querySelector('.videoPlayerContainer');
-        host.style.width = '100vw';
-        host.style.height = '219px';
-    });
-    await page.waitForFunction(() => fixture.pixels() > 50 && document.querySelector('.finweb-ass-surface canvas').getBoundingClientRect().width <= 390);
-    await page.evaluate(() => {
-        const host = document.querySelector('.videoPlayerContainer');
-        host.addEventListener('click', () => { window.fullscreenAttempt = host.requestFullscreen(); }, { once: true });
-    });
-    await page.locator('video').click();
-    await page.evaluate(() => window.fullscreenAttempt);
-    await page.waitForFunction(() => !!document.fullscreenElement && fixture.pixels() > 50);
-    await page.evaluate(() => document.exitFullscreen());
-    await page.evaluate(() => window.hostPlayer.stop(true));
-    await page.waitForTimeout(500);
-    assert.equal(page.workers().length, 0);
-    assert.deepEqual(errors, []);
-    console.log('PASS actual HtmlVideoPlayer entry: direct/HLS, sparse indices, delayed OSD, transcode offset, mobile resize/fullscreen, switching and stop; zero remaining workers or page errors; no screenshots');
+    {
+        const defaultPage = await browser.newPage();
+        const defaultErrors = [];
+        defaultPage.on('pageerror', error => defaultErrors.push(error.message));
+        await defaultPage.goto(`http://127.0.0.1:${server.address().port}/`);
+        await defaultPage.waitForFunction(() => !!window.fixture);
+        await defaultPage.evaluate(() => { fixture.video.playbackRate = 2; void fixture.video.play(); void fixture.select(7); });
+        await defaultPage.waitForFunction(() => fixture.active() === 7 && fixture.pixels() > 50
+            && document.querySelectorAll('.subtitle-pipeline-ass').length === 1, null, { timeout: 30_000 });
+        await defaultPage.evaluate(() => { fixture.video.pause(); return fixture.select(3); });
+        await defaultPage.waitForFunction(() => fixture.cues().includes('SRT FIRST'));
+        await defaultPage.evaluate(() => fixture.select(7));
+        await defaultPage.waitForFunction(() => fixture.active() === 7 && fixture.pixels() > 50);
+        await defaultPage.evaluate(() => fixture.clear());
+        assert.equal(await defaultPage.locator('.subtitle-pipeline-ass').count(), 0);
+        assert.equal(defaultPage.workers().length, 0);
+        assert.deepEqual(defaultErrors, []);
+        await defaultPage.close();
+        console.log('PASS default Original libass-wasm ASS at 2x, paused SRT/ASS switches and Worker cleanup');
+    }
 } finally {
     await browser?.close();
     server.closeAllConnections();

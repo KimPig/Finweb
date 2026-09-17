@@ -24,17 +24,17 @@ function identity(window) {
     }));
 }
 
-assert.equal(metadata.version, '12.0.0');
-assert.equal(metadata.jellyfinWebVersion, '12.0');
-assert.equal(metadata.finwebVersion, '12.0.0');
+assert.equal(metadata.version, '12.1.0');
+assert.equal(metadata.jellyfinWebVersion, '12.1');
+assert.equal(metadata.finwebVersion, '12.1.0');
 for (const window of [{}, { NativeShell:{} }, { NativeShell:{ AppHost:{} } }]) {
-    assert.deepEqual(identity(window), { appName:'Finweb', appVersion:'12.0.0' });
+    assert.deepEqual(identity(window), { appName:'Finweb', appVersion:'12.1.0' });
 }
 assert.deepEqual(identity({ NativeShell:{ AppHost:{
     appName:() => 'Jellyfin Android', appVersion:() => '9.9.9'
 } } }), { appName:'Jellyfin Android', appVersion:'9.9.9' });
 assert.deepEqual(identity({ NativeShell:{ AppHost:{ appName:() => 'Native client' } } }),
-    { appName:'Native client', appVersion:'12.0.0' });
+    { appName:'Native client', appVersion:'12.1.0' });
 assert.deepEqual(identity({ NativeShell:{ AppHost:{ appVersion:() => '9.9.9' } } }),
     { appName:'Finweb', appVersion:'9.9.9' });
 console.log('PASS: Finweb browser client identity and native host overrides. Package version remains semver-compatible.');

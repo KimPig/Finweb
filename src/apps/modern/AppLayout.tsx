@@ -31,6 +31,10 @@ export const Component = () => {
     const isDrawerOpen = isDrawerActive && isDrawerAvailable && !isMediumScreen;
 
     useLayoutEffect(() => {
+        // The legacy login node can outlive navigation until the new page's passive effect.
+        // Hide it before the authenticated layout reserves space for the sidebar.
+        document.documentElement.toggleAttribute('data-finweb-login', location.pathname === '/login');
+        if (location.pathname !== '/login') document.getElementById('loginPage')?.classList.add('hide');
         document.body.classList.add('finweb-modern-layout');
         document.body.classList.toggle('finweb-sidebar-visible', isSidebarVisible);
         document.body.style.setProperty('--finweb-sidebar-width', `${FINWEB_DRAWER_WIDTH}px`);
@@ -39,6 +43,7 @@ export const Component = () => {
             document.body.classList.remove('finweb-modern-layout');
             document.body.classList.remove('finweb-sidebar-visible');
             document.body.style.removeProperty('--finweb-sidebar-width');
+            document.documentElement.removeAttribute('data-finweb-login');
         };
     }, [isSidebarVisible, location.pathname]);
 

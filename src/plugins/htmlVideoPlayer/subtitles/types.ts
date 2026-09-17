@@ -25,6 +25,7 @@ export type SubtitleClockReason =
 
 export interface SubtitleClockSnapshot {
     currentTime: number;
+    videoFramePresented: boolean;
     paused: boolean;
     playbackRate: number;
     reason: SubtitleClockReason;

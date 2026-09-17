@@ -9,6 +9,7 @@ import { compile } from 'sass';
 import postcss from 'postcss';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const metadata = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
 for (const relative of ['src/components/toolbar/AppUserMenu.tsx',
     'src/apps/modern/features/libraries/components/SortButton.tsx',
     'src/apps/modern/features/libraries/components/ViewSettingsButton.tsx',
@@ -19,7 +20,8 @@ for (const relative of ['src/components/toolbar/AppUserMenu.tsx',
 const { chromium } = await import(process.env.PLAYWRIGHT_MODULE ?
     pathToFileURL(path.resolve(process.env.PLAYWRIGHT_MODULE)).href : 'playwright');
 const stubs = {
-    'hooks/useApi': 'import {useLocation} from \'react-router-dom\'; export const useApi = () => ({isUserLoading:window.userLoading, user: useLocation().pathname === \'/login\' || window.userLoading ? undefined : {Id:\'user\',Policy:{IsAdministrator:window.isAdmin !== false}}});',
+    'hooks/useLocale': 'export const useLocale=()=>({dateFnsLocale:undefined});',
+    'hooks/useApi': 'import {useLocation} from \'react-router-dom\'; export const useApi = () => ({isUserLoading:window.userLoading, user: useLocation().pathname === \'/login\' || window.userLoading || window.userUnavailable ? undefined : {Id:\'user\',Policy:{IsAdministrator:window.isAdmin !== false}}});',
     'hooks/api/useUserViews': 'export const useUserViews = () => ({data:{Items:[{Id:\'movies\',Name:\'Movies\',CollectionType:\'movies\'}, {Id:\'tv\',Name:\'VeryLongLibraryNameWithoutSpacesToCheckWrappingAndOverflow\',CollectionType:\'tvshows\'}, {Id:\'livetv\',Name:\'Live TV\',CollectionType:\'livetv\'}]}});',
     'hooks/useWebConfig': 'export const useWebConfig = () => ({menuLinks:[{name:\'External\',url:\'https://example.com\'}]});',
     'hooks/useSystemInfo': 'export const useSystemInfo = () => ({data:{ServerName:window.serverName || \'Finweb Test Server\',Version:\'12.0.0\'}});',
@@ -34,6 +36,8 @@ const stubs = {
     'scripts/settings/userSettings': 'export const get = () => undefined; export const enableBlurhash = () => true;'
 };
 const suffixStubs = {
+    '/HelpButton': 'export default ()=>null;',
+    '/components/AppTabs': 'import React from "react";export default ()=> <div data-testid="dashboard-tabs">Dashboard tabs</div>;',
     '/hooks/useLibrary': 'export {LibraryProvider,useLibrary} from "fixture-library";',
     '/hooks/useScreensavers': 'export const useScreensavers = () => ({screensavers:[{id:\'none\',name:\'None\'}]});',
     '/api/useAncestors': 'export const useAncestors = ({itemId}) => ({data:itemId ? [{Type:\'CollectionFolder\',Id:\'movies\'}] : []});',
@@ -51,9 +55,9 @@ const suffixStubs = {
     '/UserViewNav': 'import React from \'react\'; export default () => <div data-testid=\'top-navigation\'>Libraries</div>;',
     '/ServerButton': 'import React from \'react\'; export default () => <button>Server</button>;',
     '/UserMenuButton': 'import React from \'react\'; import Popup from \'fixture-popup\'; export default () => <Popup label="Profile"/>;',
-    '/SearchButton': 'import React from \'react\'; export default () => <button aria-label=\'Search\'>Search</button>;',
-    '/SyncPlayButton': 'import React from \'react\'; export default () => <button aria-label=\'SyncPlay\'>SyncPlay</button>;',
-    '/RemotePlayButton': 'import React from \'react\'; export default () => <button aria-label=\'RemotePlay\'>RemotePlay</button>;',
+    '/SearchButton': 'import React from \'react\'; import IconButton from \'@mui/material/IconButton\'; export default () => <IconButton size="large" aria-label=\'Search\'>S</IconButton>;',
+    '/SyncPlayButton': 'import React from \'react\'; import IconButton from \'@mui/material/IconButton\'; export default () => <IconButton size="large" aria-label=\'SyncPlay\'>G</IconButton>;',
+    '/RemotePlayButton': 'import React from \'react\'; import IconButton from \'@mui/material/IconButton\'; export default () => <IconButton size="large" aria-label=\'RemotePlay\'>R</IconButton>;',
     '/sections/ServerDrawerSection': 'export default () => null;',
     '/sections/DevicesDrawerSection': 'export default () => null;',
     '/sections/LiveTvDrawerSection': 'export default () => null;',
@@ -77,9 +81,12 @@ window.setLibraryResult=setResult;window.librarySettings=viewSettings;
 return <Context.Provider value={{isLibraryPath:useLocation().pathname==='/movies',content:{viewType:'movies',isPaginationEnabled:true,isBtnSortEnabled:true,isBtnFilterEnabled:true,isBtnPlayAllEnabled:true},itemsResult:result,viewSettings,setViewSettings}}>{children}</Context.Provider>; }`;
 const bundle = await build({
     absWorkingDir: root, bundle: true, write: false, format: 'iife',
-    loader: { '.png': 'dataurl' }, define: { 'process.env.NODE_ENV': '"production"', __FINWEB_VERSION__:'"12.0.0"', __JF_BUILD_VERSION__:'"fixture"' },
+    loader: { '.png': 'dataurl' }, define: { 'process.env.NODE_ENV': '"production"', __FINWEB_VERSION__:JSON.stringify(metadata.finwebVersion), __JF_BUILD_VERSION__:'"fixture"' },
     plugins: [{ name: 'fixture-services', setup(builder) {
         builder.onResolve({ filter: /.*/ }, args => {
+            if (args.path === './routes/routes' && /dashboard[\\/]AppLayout\.tsx$/.test(args.importer)) {
+                return { path: 'fixture-dashboard-paths', namespace: 'fixture', pluginData: 'export const DASHBOARD_APP_PATHS={Dashboard:"dashboard",MetadataManager:"metadata",PluginConfig:"configurationpage"};' };
+            }
             const stub = stubs[args.path] ?? Object.entries(suffixStubs).find(([suffix]) => args.path.endsWith(suffix))?.[1];
             if (stub) return { path: args.path, namespace: 'fixture', pluginData: stub };
             if (args.path.endsWith('.scss')) return { path: args.path, namespace: 'fixture', pluginData: '' };
@@ -90,10 +97,10 @@ const bundle = await build({
 import React from 'react';
 import {createRoot} from 'react-dom/client';
 import {ThemeProvider,useColorScheme} from '@mui/material/styles';
-import theme from './src/themes';
+import {finwebTheme as theme} from './src/themes';
 import {createMemoryRouter,RouterProvider,useLocation} from 'react-router-dom';
 import {Component as AppLayout} from './src/apps/modern/AppLayout';
-import DashboardDrawer from './src/apps/dashboard/components/drawer/AppDrawer';
+import {Component as DashboardLayout} from './src/apps/dashboard/AppLayout';
 import AlphabetPicker from './src/apps/modern/features/libraries/components/AlphabetPicker';
 import LibraryPaginationFooter from './src/apps/modern/features/libraries/components/LibraryPaginationFooter';
 import ContentLoadingBoundary from './src/components/loading/ContentLoadingBoundary';
@@ -103,9 +110,9 @@ import {DisplayPreferences} from './src/apps/modern/features/preferences/compone
 const values = {layout:'auto',theme:'dark',customCss:'saved',dashboardTheme:'dark',disableCustomCss:false,
  screensaver:'none',screensaverTime:300,backdropScreensaverInterval:30,slideshowInterval:5,enableBlurHash:false,enableFasterAnimation:false};
 function Content(){const {pathname}=useLocation();const [state,setState]=React.useState({pending:true,key:'initial',delay:0});window.setLoadingFixture=setState;
-return <div className='mainAnimatedPage libraryPage' data-testid='page' data-path={pathname}>
+return <div className='page mainAnimatedPage libraryPage' data-testid='page' data-path={pathname}>
  {pathname === '/mypreferencesdisplay' ? <DisplayPreferences values={values} onChange={()=>{}}/> : pathname}
- {pathname === '/movies' && <><AlphabetPicker onChange={()=>{}}/><div style={{height:1000}}/><LibraryPaginationFooter/></>}
+ {pathname === '/movies' && <div className='padded-bottom-page'><AlphabetPicker onChange={()=>{}}/><div style={{height:1000}}/><LibraryPaginationFooter/></div>}
  {pathname === '/server-info' && <ServerInfoWidget/>}
  {pathname === '/loading' && <ContentLoadingBoundary loading={state.pending} retainContent={state.retain} progressive={state.progressive}>
  <div style={{height:state.offscreen?2000:0}}/>
@@ -114,7 +121,8 @@ return <div className='mainAnimatedPage libraryPage' data-testid='page' data-pat
  </div><button onClick={()=>window.posterAction=true}>Poster action</button>
  </ContentLoadingBoundary>}
 </div>;}
-const router = createMemoryRouter([{path:'/dashboard',element:<DashboardDrawer open onClose={()=>{}} onOpen={()=>{}}/>},
+const router = createMemoryRouter([{path:'/dashboard',element:<DashboardLayout/>},
+ {path:'/slow-home',loader:()=>new Promise(resolve=>setTimeout(()=>resolve(null),600)),element:<AppLayout/>,children:[{index:true,element:<Content/>}]},
  {path:'*',element:<AppLayout/>,children:[{path:'*',element:<Content/>}]}],{initialEntries:['/home']});
 window.navigate = path => router.navigate(path);
 window.actions = [];
@@ -124,7 +132,7 @@ createRoot(document.getElementById('root')).render(<ThemeProvider theme={theme}>
 ` }
 });
 let css = '';
-for (const relative of ['src/styles/site.scss', 'src/styles/librarybrowser.scss', 'src/apps/modern/AppOverrides.scss', 'src/components/common/Image.scss', 'src/components/alphaPicker/style.scss', 'src/components/viewManager/viewContainer.scss', 'src/components/appFooter/appFooter.scss']) {
+for (const relative of ['src/styles/site.scss', 'src/styles/librarybrowser.scss', 'src/elements/emby-button/emby-button.scss', 'src/components/cardbuilder/card.scss', 'src/plugins/htmlVideoPlayer/style.scss', 'src/apps/modern/AppOverrides.scss', 'src/components/common/Image.scss', 'src/components/alphaPicker/style.scss', 'src/components/viewManager/viewContainer.scss', 'src/components/appFooter/appFooter.scss', 'src/styles/finweb.scss']) {
     css += compile(path.join(root, relative), { loadPaths:[path.join(root, 'src/styles')] }).css;
 }
 let legacyCss = `
@@ -147,7 +155,7 @@ if (process.env.FINWEB_LEGACY_CSS_URL) {
     assert.ok(rules.length > 10);
     legacyCss = rules.join('\n');
 }
-const html = `<!doctype html><html class="layout-desktop" dir="ltr"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
+const html = `<!doctype html><html class="layout-desktop" data-finweb-theme dir="ltr"><head><meta name="viewport" content="width=device-width,initial-scale=1"><style>
 html,body,#root{height:100%;margin:0}body{font-family:Arial,sans-serif}.appfooter{height:40px}
 ${css}</style><style id="theme-css">${themeCss.dark}</style><style id="legacy-css">${legacyCss}</style></head><body><div id="root"></div><div class="appfooter">Now playing</div><script src="/fixture.js"></script></body></html>`;
 const posterRequests = new Map();
@@ -191,6 +199,9 @@ try {
             }, custom);
             await navigate('/home');
             assert.equal(await page.locator('.finweb-appbar-content').evaluate(el => getComputedStyle(el).paddingTop), width < 600 ? '8px' : '12px');
+            if (width >= 900) {
+                assert.equal(await page.locator('.finweb-drawer .sidebarHeader').first().evaluate(el => getComputedStyle(el).paddingTop), '14px');
+            }
             await page.evaluate(() => window.setLibraryResult({ data:{ TotalRecordCount:600 }, isPending:true }));
             const frames = await page.evaluate(async () => {
                 const samples = [];
@@ -227,6 +238,56 @@ try {
         window.userLoading = false;
     });
     await navigate('/home?ready=1');
+    for (const width of [390, 900, 1280]) {
+        const startup = await browser.newPage({ viewport: { width, height: 900 } });
+        startup.on('pageerror', error => errors.push(error.message));
+        await startup.addInitScript(() => {
+            window.userLoading = true;
+        });
+        await startup.goto(`http://127.0.0.1:${server.address().port}`);
+        await startup.locator('[data-testid="page"]').waitFor();
+        for (const route of ['/home', '/movies']) {
+            await startup.evaluate(destination => {
+                window.userLoading = true;
+                window.userUnavailable = false;
+                return window.navigate(destination);
+            }, route);
+            await startup.waitForTimeout(100);
+            assert.equal(await startup.locator('.finweb-header-actions, .finweb-drawer').count(), 0, 'No group background or drawer while user information loads');
+            assert.equal(await startup.getByRole('button', { name: /^(Search|SyncPlay|RemotePlay|Profile)$/ }).count(), 0, 'No early actions or focusable invisible buttons');
+            const before = await startup.locator('[data-testid="page"]').boundingBox();
+            assert.equal(before.x, width >= 900 ? 250 : 0, 'Sidebar space is reserved independently of readiness');
+            const frames = await startup.evaluate(async destination => {
+                const samples = [];
+                window.userLoading = false;
+                await window.navigate(destination + '?ready=1');
+                for (let frame = 0; frame < 12; frame++) {
+                    await new Promise(requestAnimationFrame);
+                    samples.push({
+                        top: document.querySelector('[data-testid="page"]').getBoundingClientRect().top,
+                        actions: Boolean(document.querySelector('.finweb-header-actions')),
+                        drawer: Boolean(document.querySelector('.finweb-drawer'))
+                    });
+                }
+                return samples;
+            }, route);
+            for (const frame of frames) {
+                assert.ok(Math.abs(frame.top - before.y) <= 1, `User readiness must not shift ${width}px ${route}: ${JSON.stringify(frame)}`);
+                if (width >= 900) assert.equal(frame.actions, frame.drawer, 'Desktop drawer and actions appear in the same frame');
+            }
+            assert.equal(await startup.locator('.finweb-header-actions').isVisible(), true);
+            for (const label of ['Search', 'RemotePlay', 'Profile']) assert.equal(await startup.getByLabel(label).isVisible(), true);
+        }
+        await startup.evaluate(() => {
+            window.userUnavailable = true;
+            return window.navigate('/home?unauthenticated=1');
+        });
+        assert.equal(await startup.locator('.finweb-header-actions').count(), 0, 'Failed user lookup cannot expose authenticated actions');
+        await startup.evaluate(() => window.navigate('/login'));
+        assert.equal(await startup.locator('.finweb-brand-logo').isVisible(), true, 'Public login logo remains visible');
+        assert.equal(await startup.locator('.finweb-header-actions').count(), 0);
+        await startup.close();
+    }
     await page.evaluate(() => window.setLibraryResult({ data:{ TotalRecordCount:600 }, isPending:false }));
     for (const width of [900, 1280, 1920]) {
         await page.setViewportSize({ width, height: 900 });
@@ -438,6 +499,7 @@ try {
         }
     }
     const headerSnippet = await page.addStyleTag({ content: `
+:root { --primary-background-transparent: rgba(35, 35, 35, 0.5); --blur: 10px; }
 .finweb-layout .finweb-header-actions,
 .finweb-layout .finweb-library-summary,
 .finweb-layout .finweb-library-actions {
@@ -467,6 +529,8 @@ try {
     await page.setViewportSize({ width:1280, height:900 });
     await navigate('/movies?topParentId=movies');
     const footer = page.locator('.finweb-pagination-footer');
+    await footer.evaluate(element => element.scrollIntoView({ block: 'center' }));
+    await page.waitForTimeout(400);
     await footer.getByTitle('Next', { exact:true }).click();
     assert.equal(await page.evaluate(() => window.librarySettings.StartIndex), 100);
     assert.ok((await footer.innerText()).includes('101-200 / 600'));
@@ -492,24 +556,86 @@ try {
         transition:getComputedStyle(el).transitionProperty,
         duration:getComputedStyle(el).transitionDuration
     }));
-    assert.equal(selectedStyle.background, 'rgb(0, 164, 220)', 'Restore solid blue selection without custom CSS');
+    assert.equal(selectedStyle.background, 'rgb(38, 38, 38)', 'Built-in square theme uses a neutral selected row with a blue marker');
     assert.notEqual(selectedStyle.foreground, selectedStyle.background);
-    assert.ok(selectedStyle.transition.includes('transform') && selectedStyle.duration.includes('0.2s'));
+    assert.ok(selectedStyle.transition.includes('background-color') && selectedStyle.duration.includes('0.12s'));
     await page.evaluate(() => {
         const player = document.createElement('div');
         player.className = 'videoPlayerContainer videoPlayerContainer-onTop';
         document.body.prepend(player);
     });
     await page.waitForFunction(() => document.body.classList.contains('finweb-video-presentation'));
-    assert.equal(await page.getByLabel('Profile', { exact:true }).isVisible(), false);
-    assert.equal(await page.locator('.alphaPicker-fixed-right').isVisible(), false);
-    assert.equal(await page.locator('.finweb-drawer-brand').isVisible(), false);
+    for (const selector of ['.finweb-header-actions', '.alphaPicker-fixed-right', '.finweb-drawer-brand']) {
+        assert.equal(await page.locator(selector).evaluate(el => el.checkVisibility({ checkOpacity: true })), false);
+    }
+    assert.equal(await page.locator('.finweb-layout').evaluate(el => el.hasAttribute('inert')), true);
     await page.evaluate(() => document.querySelector('.videoPlayerContainer').classList.remove('videoPlayerContainer-onTop'));
-    await page.getByLabel('Profile', { exact:true }).waitFor({ state:'visible' });
+    await page.waitForFunction(() => !document.querySelector('.finweb-layout').hasAttribute('inert'));
     await page.evaluate(() => document.querySelector('.videoPlayerContainer').classList.add('videoPlayerContainer-onTop'));
-    await page.getByLabel('Profile', { exact:true }).waitFor({ state:'hidden' });
+    await page.waitForFunction(() => document.querySelector('.finweb-layout').hasAttribute('inert'));
     await page.evaluate(() => document.querySelector('.videoPlayerContainer').remove());
-    await page.getByLabel('Profile', { exact:true }).waitFor({ state:'visible' });
+    await page.waitForFunction(() => !document.querySelector('.finweb-layout').hasAttribute('inert'));
+
+    for (const route of ['/home', '/details', '/movies']) {
+        await navigate(route);
+        await page.evaluate(() => {
+            const probes = document.createElement('div');
+            probes.id = 'presentation-probes';
+            probes.innerHTML = '<button class="emby-button">Play</button><button class="paper-icon-button-light cardOverlayButton-hover">Favorite</button><button class="paper-icon-button-light emby-scrollbuttons-button">Next</button>';
+            document.querySelector('.finweb-layout main').append(probes);
+        });
+        await page.waitForTimeout(250);
+        const frames = await page.evaluate(async () => {
+            const layout = document.querySelector('.finweb-layout');
+            const originalWidth = layout.getBoundingClientRect().width;
+            const probes = [...document.querySelectorAll('#presentation-probes button')];
+            const player = document.createElement('div');
+            player.className = 'videoPlayerContainer videoPlayerContainer-onTop';
+            player.style.animation = 'htmlvideoplayer-zoomin 240ms ease-in normal';
+            document.body.prepend(player);
+            const result = [];
+            await new Promise(resolve => {
+                const start = performance.now();
+                const sample = () => {
+                    result.push({
+                        visible: probes.some(el => el.checkVisibility({ checkOpacity: true })),
+                        inert: layout.hasAttribute('inert'),
+                        widthStable: layout.getBoundingClientRect().width === originalWidth,
+                        transitionPreserved: probes.every(el => getComputedStyle(el).transitionProperty === 'all'),
+                        playerWidth: player.getBoundingClientRect().width
+                    });
+                    if (performance.now() - start < 300) window.requestAnimationFrame(sample);
+                    else resolve();
+                };
+                window.requestAnimationFrame(sample);
+            });
+            probes[0].focus();
+            const focusBlocked = document.activeElement !== probes[0];
+            return { result, focusBlocked };
+        });
+        assert.ok(frames.result.every(frame => !frame.visible && frame.inert && frame.widthStable && frame.transitionPreserved), `${route}: hide the surface immediately without changing button transitions`);
+        assert.ok(frames.result[0].playerWidth < frames.result.at(-1).playerWidth, 'The original player zoom remains active');
+        assert.equal(frames.focusBlocked, true);
+        await page.evaluate(() => document.querySelector('.videoPlayerContainer').remove());
+        await page.waitForFunction(() => !document.querySelector('.finweb-layout').hasAttribute('inert'));
+        assert.equal(await page.locator('#presentation-probes button').first().evaluate(el => {
+            el.focus();
+            return document.activeElement === el && el.checkVisibility({ checkOpacity: true });
+        }), true, 'Failed or cancelled presentation restores visibility and focus');
+        await page.locator('#presentation-probes').evaluate(el => el.remove());
+    }
+
+    await navigate('/login');
+    await page.evaluate(() => {
+        const login = document.createElement('div');
+        login.id = 'loginPage';
+        login.textContent = 'Old login view';
+        document.querySelector('.mainAnimatedPages').append(login);
+    });
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-finweb-login')), true);
+    await navigate('/home');
+    assert.equal(await page.locator('#loginPage').evaluate(el => el.classList.contains('hide')), true);
+    assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-finweb-login')), false);
 
     await navigate('/loading');
     await page.evaluate(() => window.scrollTo(0, 0));
@@ -668,7 +794,7 @@ try {
     await page.waitForTimeout(700);
     assert.equal(await boundary.getAttribute('aria-busy'), 'true', 'Old image completion cannot reveal a newer pending page');
     await navigate('/server-info');
-    assert.equal(await page.getByText('Finweb 12.0.0', { exact:true }).isVisible(), true);
+    assert.equal(await page.getByText(`Finweb ${metadata.finwebVersion}`, { exact:true }).isVisible(), true);
     assert.equal(await page.getByText('Jellyfin Web', { exact:true }).count(), 0);
     await navigate('/home');
     assert.equal((await page.locator('[data-testid="page"]').boundingBox()).x, 250);
@@ -691,6 +817,16 @@ try {
         assert.equal(await page.locator('.MuiDrawer-paper').evaluate(el => el.scrollWidth > el.clientWidth), false);
         assert.equal(await page.locator('.finweb-drawer-brand').count(), 0);
     }
+    await page.evaluate(() => {
+        window.navigate('/slow-home');
+    });
+    await page.waitForFunction(() => {
+        const tabs = document.querySelector('[data-testid="dashboard-tabs"]');
+        return tabs && getComputedStyle(tabs).visibility === 'hidden';
+    });
+    await page.waitForFunction(() => document.querySelector('[data-testid="page"]')?.getAttribute('data-path') === '/slow-home');
+    assert.equal(await page.locator('[data-testid="top-navigation"]').count(), 0, 'Old horizontal navigation is never mounted in the modern layout');
+    assert.equal(await page.evaluate(() => document.body.classList.contains('dashboardDocument')), false);
     assert.deepEqual(errors, []);
     console.log('PASS: frame-by-frame layout and header spacing, startup, header groups/CSS, scrollbars, paging, video cleanup, uninterrupted BlurHash backing, single poster reveal, cached/interrupted remounts, reduced motion/custom animation disabling, retained content and identity. No screenshots taken.');
 } finally {

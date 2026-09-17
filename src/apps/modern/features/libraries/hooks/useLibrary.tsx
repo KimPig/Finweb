@@ -47,10 +47,21 @@ export const LibraryProvider: FC<PropsWithChildren<unknown>> = ({ children }) =>
 
     // Local storage requires the view type to be known upfront so default to movies if unknown
     const settingsViewType = viewType ?? LibraryTab.Movies;
-    const [viewSettings, setViewSettings] = useLocalStorage<LibraryViewSettings>(
-        getSettingsKey(settingsViewType, settingsKey),
-        getDefaultLibraryViewSettings(settingsViewType)
-    );
+    const storageKey = getSettingsKey(settingsViewType, settingsKey);
+    const defaultViewSettings = useMemo(() => getDefaultLibraryViewSettings(settingsViewType), [settingsViewType]);
+    const [storedViewSettings, setViewSettings] = useLocalStorage<LibraryViewSettings>(storageKey, defaultViewSettings);
+    // useLocalStorage updates its state in an effect when the key changes. Read the
+    // current library's page before rendering so the previous page cannot flash.
+    // A hook update also signals that storage may have changed in another tab.
+    const viewSettings = useMemo(() => {
+        try {
+            const saved = window.localStorage.getItem(storageKey);
+            return saved ? JSON.parse(saved) as LibraryViewSettings : defaultViewSettings;
+        } catch {
+            return defaultViewSettings;
+        }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [storageKey, storedViewSettings, defaultViewSettings]);
 
     const itemsResult = useGetItemsViewByType(
         viewType,

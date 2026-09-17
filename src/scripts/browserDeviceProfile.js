@@ -1,5 +1,5 @@
 import browser from './browser';
-import { supportsJassub } from '../plugins/htmlVideoPlayer/subtitles/support';
+import { supportsAssRendering } from '../plugins/htmlVideoPlayer/subtitles/support';
 import appSettings from './settings/appSettings';
 import * as userSettings from './settings/userSettings';
 
@@ -1601,7 +1601,7 @@ export default function (options) {
                 Method: 'External'
             });
         }
-        if (supportsJassub() && options.enableSsaRender !== false && !options.isRetry && subtitleBurninSetting !== 'allcomplexformats') {
+        if (supportsAssRendering() && options.enableSsaRender !== false && !options.isRetry && subtitleBurninSetting !== 'allcomplexformats') {
             profile.SubtitleProfiles.push({
                 Format: 'ass',
                 Method: 'External'

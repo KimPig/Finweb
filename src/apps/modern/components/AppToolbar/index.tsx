@@ -1,17 +1,14 @@
-import Stack from '@mui/material/Stack';
 import React, { type FC } from 'react';
 import { useLocation } from 'react-router-dom';
 
 import { appRouter, PUBLIC_PATHS } from 'components/router/appRouter';
 import BaseToolbar from 'components/toolbar/AppToolbar';
-import ServerButton from 'components/toolbar/ServerButton';
+import BrandLogo from 'components/toolbar/BrandLogo';
 import { useApi } from 'hooks/useApi';
-import { isDrawerPath } from '../drawers/AppDrawer';
 
 import RemotePlayButton from './RemotePlayButton';
 import SyncPlayButton from './SyncPlayButton';
 import SearchButton from './SearchButton';
-import UserViewNav from './userViews/UserViewNav';
 
 interface AppToolbarProps {
     isSidebarVisible: boolean
@@ -21,13 +18,12 @@ interface AppToolbarProps {
 }
 
 const AppToolbar: FC<AppToolbarProps> = ({
-    isSidebarVisible,
     isDrawerAvailable,
     isDrawerOpen,
     onDrawerButtonClick
 }) => {
     const location = useLocation();
-    const { isUserLoading } = useApi();
+    const { user } = useApi();
 
     // The video osd does not show the standard toolbar
     if (location.pathname === '/video') return null;
@@ -37,10 +33,12 @@ const AppToolbar: FC<AppToolbarProps> = ({
 
     // Check if the current path is a public path to hide user content
     const isPublicPath = PUBLIC_PATHS.includes(location.pathname);
+    // Match the drawer's user readiness without removing the toolbar's reserved height.
+    const showUserActions = !isPublicPath && Boolean(user);
 
     return (
         <BaseToolbar
-            buttons={!isPublicPath && (
+            buttons={showUserActions && (
                 <>
                     <SyncPlayButton />
                     <RemotePlayButton />
@@ -51,22 +49,11 @@ const AppToolbar: FC<AppToolbarProps> = ({
             isDrawerOpen={isDrawerOpen}
             onDrawerButtonClick={onDrawerButtonClick}
             isBackButtonAvailable={isBackButtonAvailable}
-            isUserMenuAvailable={!isPublicPath}
+            isUserMenuAvailable={showUserActions}
             className='padded-left padded-right'
-            actionsClassName={isPublicPath ? undefined : 'finweb-header-actions'}
+            actionsClassName={showUserActions ? 'finweb-header-actions' : undefined}
         >
-            {!isUserLoading && !isDrawerPath(location.pathname) && !isDrawerAvailable && !isSidebarVisible && (
-                <Stack
-                    direction='row'
-                    spacing={0.5}
-                >
-                    <ServerButton />
-
-                    {!isPublicPath && (
-                        <UserViewNav />
-                    )}
-                </Stack>
-            )}
+            {isPublicPath && <BrandLogo />}
         </BaseToolbar>
     );
 };

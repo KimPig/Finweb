@@ -17,7 +17,6 @@ const VideoPage: FC = () => {
     const documentRef = useRef<Document>(document);
     const [ isVisible, setIsVisible ] = useState(true);
     const [ videoTitle, setVideoTitle ] = useState<string>('');
-
     const onShowVideoOsd = (_e: Event, isShowing: boolean) => {
         setIsVisible(isShowing);
     };

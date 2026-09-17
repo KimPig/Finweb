@@ -89,7 +89,9 @@ function createVideo() {
         videoHeight: { configurable: true, value: 1080 },
         offsetWidth: { configurable: true, value: 1280 },
         offsetHeight: { configurable: true, value: 720 },
-        currentTime: { configurable: true, writable: true, value: 3 }
+        currentTime: { configurable: true, writable: true, value: 3 },
+        readyState: { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA },
+        played: { configurable: true, value: { length: 1 } }
     });
     return { parent, video };
 }
@@ -109,7 +111,7 @@ function createOptions(request: SubtitleLoadRequest, videoElement: HTMLVideoElem
 }
 
 const snapshot = (currentTime: number, reason: SubtitleClockReason = 'frame') => (
-    { currentTime, paused: false, playbackRate: 1, reason }
+    { currentTime, videoFramePresented: true, paused: false, playbackRate: 1, reason }
 );
 
 async function loadRenderer() {
@@ -146,6 +148,55 @@ afterEach(() => {
 });
 
 describe('ASS worker lifecycle', () => {
+    it('prepares ASS behind the poster and reveals it on the first video frame without another worker reply', async () => {
+        const { renderer, octopus, parent } = await loadRenderer();
+        const activation = renderer.activate({ ...snapshot(0, 'selection'), videoFramePresented: false });
+        octopus.worker.frame();
+        await activation;
+        const host = parent.querySelector<HTMLElement>('.subtitle-pipeline-ass');
+        expect(host?.style.visibility).toBe('hidden');
+        const requests = octopus.worker.messages.length;
+        renderer.update({ ...snapshot(0, 'loadeddata'), videoFramePresented: false });
+        expect(host?.style.visibility).toBe('hidden');
+        renderer.update(snapshot(0));
+        expect(host?.style.visibility).toBe('visible');
+        expect(octopus.worker.messages).toHaveLength(requests);
+        renderer.update({ ...snapshot(0, 'pause'), paused: true });
+        expect(host?.style.visibility).toBe('visible');
+        renderer.update({ ...snapshot(0, 'emptied'), videoFramePresented: false });
+        octopus.worker.frame();
+        expect(host?.style.visibility).toBe('hidden');
+    });
+
+    it('shares video presentation state across paused track switches and resets for a new source', async () => {
+        const { video, parent } = createVideo();
+        Object.defineProperty(video, 'played', { configurable: true, value: { length: 0 } });
+        const pipeline = new TextSubtitlePipeline(video);
+        pipelines.push(pipeline);
+        const selection = pipeline.select(0, 2, request => createAssRendererAdapter(createOptions(request, video)));
+        await vi.waitFor(() => expect(octopusMock.instances).toHaveLength(1));
+        octopusMock.instances[0].worker.ready();
+        await vi.waitFor(() => expect(octopusMock.instances[0].worker.messages.at(-1)?.target).toBe('oneshot-render'));
+        octopusMock.instances[0].worker.frame();
+        await selection;
+        expect(parent.querySelector<HTMLElement>('.subtitle-pipeline-ass')?.style.visibility).toBe('hidden');
+        video.dispatchEvent(new Event('playing'));
+        expect(parent.querySelector<HTMLElement>('.subtitle-pipeline-ass')?.style.visibility).toBe('visible');
+        video.dispatchEvent(new Event('pause'));
+        await pipeline.select(0, 3, async () => ({ activate: vi.fn(), update: vi.fn(), setOffset: vi.fn(), dispose: vi.fn() }));
+        const switched = pipeline.select(0, 2, request => createAssRendererAdapter(createOptions(request, video)));
+        await vi.waitFor(() => expect(octopusMock.instances).toHaveLength(2));
+        octopusMock.instances[1].worker.ready();
+        await vi.waitFor(() => expect(octopusMock.instances[1].worker.messages.at(-1)?.target).toBe('oneshot-render'));
+        octopusMock.instances[1].worker.frame();
+        await switched;
+        expect(parent.querySelector<HTMLElement>('.subtitle-pipeline-ass')?.style.visibility).toBe('visible');
+        video.dispatchEvent(new Event('loadstart'));
+        expect(parent.querySelector<HTMLElement>('.subtitle-pipeline-ass')?.style.visibility).toBe('hidden');
+        octopusMock.instances[1].worker.frame();
+        expect(parent.querySelector<HTMLElement>('.subtitle-pipeline-ass')?.style.visibility).toBe('hidden');
+    });
+
     it('matches libass prescaling for high-DPI and 4K canvases', () => {
         expect(computeAssRenderSize(1920, 1080, 1)).toEqual({ width: 1920, height: 1080 });
         expect(computeAssRenderSize(1920, 1080, 2)).toEqual({ width: 3072, height: 1728 });

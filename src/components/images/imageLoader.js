@@ -74,6 +74,8 @@ export function fillImage(entry) {
         throw new Error('entry cannot be null');
     }
     const target = entry.target;
+    // Hidden pre-playback Home keeps its loaded posters until it is restored.
+    if (target?.closest('[data-finweb-retained-home][hidden]')) return;
     let source;
 
     if (target) {

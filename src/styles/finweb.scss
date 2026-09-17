@@ -1,0 +1,1567 @@
+/* Scoped before paint; portals inherit the same document theme. */
+:where(html[data-finweb-theme]) {
+    /* stylelint-disable no-descending-specificity -- Shared legacy and MUI styles are followed by page-specific overrides. */
+
+    /* Finweb square theme. Derived from Scyfin 1.4.8 and the local theme. */
+
+    /* 01. 공통 색상과 모서리 변수 */
+
+    --primary-r: 69;
+    --primary-g: 137;
+    --primary-b: 255;
+    --primary-accent-color: rgba(var(--primary-r), var(--primary-g), var(--primary-b), 1);
+    --secondary-accent-color: rgba(69, 137, 255, 0.16);
+    --primary-background-color: #161616;
+    --secondary-background-color: #262626;
+    --primary-background-transparent: #262626;
+    --secondary-background-transparent: #1f1f1f;
+    --rounded-cards: 0;
+    --finweb-radius-pill: 0;
+    --finweb-radius-header: 0;
+    --finweb-radius-login: 0;
+    --blur: 0;
+    --finweb-line: #525252;
+    --finweb-line-subtle: #393939;
+    --finweb-hover: #333;
+    --finweb-text: #f4f4f4;
+    --finweb-muted: #c6c6c6;
+    --finweb-action: #2474ff;
+    --finweb-sidebar-background: #161616;
+
+    /* 장치 카드에 쓰는 강조색 단계 */
+    --primary-alt1: rgb(calc(var(--primary-r) - 30), calc(var(--primary-g) - 30), calc(var(--primary-b) - 30), 1);
+    --primary-alt2: rgb(calc(var(--primary-r) - 30), calc(var(--primary-g) - 30), calc(var(--primary-b) - 30), 0.85);
+    --primary-alt3: rgb(calc(var(--primary-r) - 30), calc(var(--primary-g) - 30), calc(var(--primary-b) - 30), 0.7);
+    --primary-alt4: rgb(calc(var(--primary-r) - 30), calc(var(--primary-g) - 30), calc(var(--primary-b) - 30), 0.55);
+    --primary-alt5: rgb(calc(var(--primary-r) - 30), calc(var(--primary-g) - 30), calc(var(--primary-b) - 30), 0.4);
+
+    /* 02. 체크박스, 진행률, 링크의 강조색 */
+
+    .emby-checkbox:checked + span + .checkboxOutline,
+    .selectionCommandsPanel,
+    .countIndicator,
+    .MuiButton-root.MuiButton-containedPrimary:not(.Mui-disabled),
+    .MuiChip-root.MuiChip-colorInfo:not(.MuiChip-root.MuiChip-colorError),
+    progress[aria-valuenow]::before {
+        background: var(--primary-accent-color) !important;
+    }
+
+    progress::-moz-progress-bar {
+        background: var(--primary-accent-color) !important;
+    }
+
+    progress::-webkit-progress-value {
+        background: var(--primary-accent-color) !important;
+    }
+
+    .MuiAlert-root.MuiAlert-standardInfo {
+        background: var(--secondary-accent-color) !important;
+    }
+
+    .emby-checkbox:checked + span + .checkboxOutline,
+    .emby-checkbox:focus:not(:checked) + span + .checkboxOutline,
+    .emby-input:focus,
+    .emby-textarea:focus,
+    .emby-select-withcolor:focus,
+    .mdl-spinner__layer-1,
+    .mdl-spinner__layer-2,
+    .mdl-spinner__layer-3,
+    .mdl-spinner__layer-4,
+    .progressring-spiner {
+        border-color: var(--primary-accent-color) !important;
+    }
+
+    .button-link:not(.itemDetailPage .button-link),
+    .selectLabelFocused,
+    .textareaLabelFocused,
+    .inputLabelFocused,
+    .emby-tab-button:hover,
+    .metadataSidebarIcon,
+    .upNextDialog-countdownText,
+    .listItemImageButton:hover,
+    .button-flat:hover,
+    #divRunningTasks span {
+        color: var(--primary-accent-color) !important;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        .paper-icon-button-light:hover:not(:disabled) {
+            color: var(--primary-accent-color) !important;
+            background-color: var(--secondary-accent-color) !important;
+        }
+    }
+
+    /* 이전 화면의 Jellyfin 로고 크기 */
+
+    &.layout-desktop .pageTitleWithLogo {
+        margin-left: 25px !important;
+        height: 40px !important;
+    }
+
+    /* 빈 제목이 차지하는 여백 제거 */
+
+    &[dir="ltr"] .pageTitle:not(.pageTitleWithLogo):empty {
+        margin: 0 !important;
+    }
+
+    /* 관리자 화면 열 너비 보정 */
+
+    .dashboardColumn {
+        flex-shrink: inherit;
+    }
+
+    /* 홈의 가로 스크롤 목록 여백 */
+
+    .emby-scroller {
+        margin-right: -2% !important;
+    }
+
+    /* 컬렉션 목록 정렬 */
+
+    &.layout-desktop .collectionItems .collectionItemsContainer {
+        padding-left: 0% !important;
+    }
+
+    /* 03. 메뉴와 목록의 호버: 크기 확대 없이 색상만 변경 */
+
+    &.layout-desktop .navMenuOption:hover:not(.navMenuOption-selected) {
+        transform: none !important;
+    }
+
+    &.layout-desktop .listItem {
+        transition: background-color 120ms ease, color 120ms ease !important;
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    &.layout-desktop #myPreferencesMenuPage .listItem:hover {
+        transform: none;
+    }
+
+    /* 04. 포스터, 카드, 선택 영역: 직각 모서리 */
+
+    .cardContent,
+    .cardPadder,
+    .cardOverlayContainer,
+    .blurhash-canvas,
+    .dialog,
+    .itemSelectionPanel {
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    /* 선택된 카드의 경계선 */
+
+    .itemSelectionPanel {
+        border: 2px solid var(--primary-accent-color) !important;
+    }
+
+    .itemSelectionPanel .checkboxOutline {
+        margin: 7px !important;
+    }
+
+    /* 05. 포스터 위 진행률과 장치 재생 진행률 */
+
+    .innerCardFooter {
+        border-radius: var(--rounded-cards) !important;
+        margin-left: 5px !important;
+        margin-bottom: 5px !important;
+        padding: 5px 15px 5px 5px !important;
+        bottom: 0% !important;
+        background: rgba(0, 0, 0, 0.5) !important;
+        backdrop-filter: none !important;
+    }
+
+    .innerCardFooterClear {
+        background-color: transparent !important;
+    }
+
+    .innerCardFooter .cardText {
+        padding: 0 0 0 10px !important;
+    }
+
+    .itemProgressBarForeground:not(.playbackProgress .itemProgressBarForeground):not(.transcodingProgress .itemProgressBarForeground):not(.backgroundProgress .itemProgressBarForeground) {
+        background: var(--primary-accent-color) !important;
+    }
+
+    .transcodingProgress > div {
+        background-color: hsla(0, 0%, 100%, 0.2) !important;
+    }
+
+    .activeSession .backgroundProgress,
+    .activeSession .playbackProgress,
+    .activeSession .transcodingProgress {
+        bottom: 10px !important;
+        border-radius: var(--finweb-radius-pill) !important;
+        width: 90% !important;
+        left: 5% !important;
+    }
+
+    .sessionNowPlayingInnerContent {
+        padding-bottom: 12px !important;
+        padding-inline: 17px !important;
+    }
+
+    .sessionAppInfo {
+        padding: 0.5em 0 !important;
+    }
+
+    .sessionNowPlayingInfo {
+        padding: 0.8em 0 !important;
+    }
+
+    /* 시청 완료 표시: 기존 녹색 유지 */
+
+    .playedIndicator {
+        background: #409843 !important;
+    }
+
+    /* 06. 사이드바 메뉴의 기본 크기 */
+
+    .navMenuOption,
+    .navMenuOption:hover,
+    .navMenuOption-selected {
+        border-radius: var(--finweb-radius-pill) !important;
+        width: 85% !important;
+        margin: auto !important;
+        text-align: center !important;
+        height: 45px !important;
+        margin-top: 3px !important;
+        margin-bottom: 3px !important;
+    }
+
+    .navMenuOption:hover:not(.navMenuOption-selected) {
+        background-color: rgba(44, 44, 44, 0.7);
+    }
+
+    /* 이전 메뉴의 아이콘과 텍스트 정렬 */
+
+    .navMenuOptionIcon,
+    .navMenuOptionText {
+        position: inherit !important;
+        left: -10% !important;
+        margin-top: 0 !important;
+    }
+
+    /* 이전 헤더 버튼 위치 */
+
+    &.layout-desktop .emby-button-foreground {
+        top: -9px !important;
+    }
+
+    &.layout-tv .emby-button-foreground {
+        top: -14px !important;
+    }
+
+    /* 선택된 메뉴의 색상 */
+
+    .navMenuOption-selected {
+        background: var(--secondary-accent-color) !important;
+        color: var(--primary-accent-color) !important;
+    }
+
+    /* 07. 전체 화면 배경 */
+
+    &,
+    .backgroundContainer:not(.withBackdrop):not(.backgroundContainer-transparent),
+    .noBackdropTransparency .detailPageSecondaryContainer {
+        background-color: var(--primary-background-color) !important;
+    }
+
+    /* 상단 전체 영역은 투명하게 유지 */
+
+    .skinHeader {
+        background-color: transparent !important;
+    }
+
+    &.layout-desktop .skinHeader,
+    &.layout-tv .skinHeader {
+        padding-top: 1.5em !important;
+    }
+
+    &.layout-tv .skinHeader {
+        padding-bottom: 10px !important;
+    }
+
+    /* 이전 헤더의 버튼 그룹 */
+
+    .headerTabs,
+    .headerRight {
+        background-color: var(--primary-background-transparent) !important;
+        border-radius: var(--finweb-radius-header) !important;
+        backdrop-filter: none !important;
+    }
+
+    &.layout-desktop .headerTabs,
+    &.layout-desktop .headerRight,
+    &.layout-tv .headerTabs,
+    &.layout-tv .headerRight {
+        margin-bottom: 10px !important;
+    }
+
+    &.layout-desktop .headerTabs {
+        margin-left: 160px !important;
+    }
+
+    /* 헤더 버튼 높이 */
+
+    .headerRight,
+    .emby-tab-button {
+        height: 45px !important;
+    }
+
+    /* 헤더 오른쪽 버튼 여백 */
+
+    &.layout-desktop .headerRight {
+        padding: 0 5px !important;
+    }
+
+    &.layout-tv .headerRight {
+        padding: 20px 10px !important;
+    }
+
+    /* 이전 데스크톱 및 TV 헤더 정렬 */
+
+    &.layout-desktop .headerLeft,
+    &.layout-tv .headerLeft {
+        position: relative !important;
+        top: -17px !important;
+    }
+
+    /* 08. 모바일 헤더와 메뉴 */
+
+    &.layout-mobile .sectionTabs {
+        margin-left: auto !important;
+        margin-right: auto !important;
+        width: auto !important;
+    }
+
+    &.layout-mobile .emby-button-foreground {
+        top: -2px !important;
+    }
+
+    &.layout-mobile .skinHeader {
+        transition: 0.1s !important;
+    }
+
+    &.layout-mobile .mainDrawer {
+        background: var(--secondary-background-color) !important;
+    }
+
+    &.layout-mobile .headroom--unpinned {
+        transform: none;
+    }
+
+    &.layout-mobile .headroom--unpinned:has(.headerTabs.sectionTabs:not(.hide)) {
+        transform: translateY(-50%);
+    }
+
+    &.layout-mobile .headroom--not-top {
+        background: var(--primary-background-transparent) !important;
+        backdrop-filter: none !important;
+    }
+
+    &.layout-mobile .headroom--not-top .headerRight {
+        background: none !important;
+    }
+
+    &.layout-mobile .headroom--top,
+    &.layout-mobile .headroom--not-top:has(.headerTabs.sectionTabs:not(.hide)) {
+        background: transparent !important;
+        backdrop-filter: none !important;
+    }
+
+    &.layout-mobile .headroom--top .headerRight,
+    &.layout-mobile .headroom--not-top:has(.headerTabs.sectionTabs:not(.hide)) .headerRight {
+        background: var(--primary-background-transparent) !important;
+    }
+
+    /* 09. 플레이어: 다음 편, 알림, 탐색 미리보기 */
+
+    .upNextContainer:not(#skipIntro),
+    .toastVisible {
+        backdrop-filter: none !important;
+    }
+
+    .upNextContainer:not(#skipIntro) {
+        border-radius: var(--rounded-cards) !important;
+        background-color: rgba(0, 0, 0, 0.6) !important;
+    }
+
+    .upNextContainer {
+        margin: 4% !important;
+    }
+
+    .toastVisible {
+        border-radius: 0 !important;
+        background-color: var(--primary-background-transparent) !important;
+    }
+
+    .sliderBubble {
+        border-radius: var(--rounded-cards) !important;
+        background-color: var(--secondary-background-transparent) !important;
+        backdrop-filter: none !important;
+    }
+
+    .sliderBubble:not(.osdVolumeSliderContainer .sliderBubble):has(.chapterThumbContainer) {
+        background-color: #1f1f1f !important;
+        top: 25px !important;
+        backdrop-filter: none !important;
+    }
+
+    .mdl-slider-background-flex {
+        height: 10px !important;
+        margin-top: -5px !important;
+        border-radius: var(--finweb-radius-pill) !important;
+        background: hsla(0, 0%, 100%, 0.2) !important;
+    }
+
+    .mdl-slider-background-lower {
+        border-radius: var(--finweb-radius-pill) !important;
+        background-color: var(--primary-accent-color) !important;
+    }
+
+    /* Firefox 재생 슬라이더 */
+
+    .mdl-slider::-moz-range-thumb {
+        background: #fff0 !important;
+        height: 10px !important;
+        width: 8px !important;
+        border-radius: 0 !important;
+    }
+
+    .mdl-slider-hoverthumb:hover::-moz-range-thumb {
+        transform: scaleY(2);
+        background: #fff !important;
+    }
+
+    /* Chromium 계열 재생 슬라이더 */
+
+    .mdl-slider::-webkit-slider-thumb {
+        background: #fff0 !important;
+        height: 10px !important;
+        width: 8px !important;
+        border-radius: 0 !important;
+    }
+
+    .mdl-slider-hoverthumb:hover::-webkit-slider-thumb {
+        transform: scaleY(2);
+        background: #fff !important;
+    }
+
+    /* OSD: keep thumb geometry and all time coordinates aligned, even while hidden. */
+    .mdl-slider-container:has(> :is(.osdPositionSlider, .osdVolumeSlider)) {
+        > .mdl-slider-background-flex-container {
+            padding: 0 4px !important;
+        }
+
+        > .sliderBubbleTrack,
+        > .sliderMarkerContainer {
+            margin: 0 4px !important;
+        }
+    }
+
+    @each $thumb in ("::-webkit-slider-thumb", "::-moz-range-thumb") {
+        .mdl-slider:is(.osdPositionSlider, .osdVolumeSlider)#{$thumb} {
+            box-sizing: border-box !important;
+            width: 8px !important;
+            height: 20px !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            background: #fff0 !important;
+            transform: scaleY(0.5) !important;
+            transition: transform 200ms ease, background-color 200ms ease !important;
+        }
+
+        .mdl-slider:is(.osdPositionSlider, .osdVolumeSlider):not(:disabled):hover#{$thumb},
+        .mdl-slider:is(.osdPositionSlider, .osdVolumeSlider):not(:disabled).show-focus:focus#{$thumb} {
+            background: #fff !important;
+            transform: scaleY(1) !important;
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .mdl-slider:is(.osdPositionSlider, .osdVolumeSlider)#{$thumb} {
+                transition: none !important;
+            }
+        }
+    }
+
+    .mdl-slider-background-upper {
+        border-top-right-radius: 0 !important;
+        border-bottom-right-radius: 0 !important;
+        background: hsla(0, 0%, 100%, 0.2) !important;
+        transform: translateX(-3px) !important;
+    }
+
+    .iconOsdProgressInner {
+        background: var(--primary-accent-color) !important;
+    }
+
+    /* 다음 편 버튼: 확대 효과 제거 */
+
+    .upNextDialog-buttons .upNextDialog-button {
+        transition: background-color 120ms ease, color 120ms ease !important;
+    }
+
+    .upNextDialog-buttons .upNextDialog-button:hover {
+        transform: none;
+    }
+
+    /* 10. 이전 설정 화면의 입력창과 버튼 */
+
+    .emby-input,
+    .emby-textarea,
+    .paperList,
+    .listItem:hover,
+    .subtitleappearance-preview {
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    .button-submit,
+    .emby-select,
+    .checkboxOutline,
+    .btnRefresh,
+    #btnShutdown,
+    .raised {
+        border-radius: var(--finweb-radius-pill) !important;
+    }
+
+    .button-submit {
+        background: var(--primary-accent-color) !important;
+    }
+
+    /* 사용자 이름 정렬 */
+
+    &.layout-desktop #userProfilePage .readOnlyContent div:not([class]),
+    &.layout-desktop #userProfilePage .readOnlyContent div[class=""] {
+        align-items: initial !important;
+    }
+
+    &.layout-desktop .username {
+        margin: 0 0 10px 10px !important;
+    }
+
+    /* 서버 종료 버튼의 위험 색상 유지 */
+
+    #btnShutdown {
+        background: #ae3739 !important;
+    }
+
+    /* 이전 관리자 목록의 경계선 */
+
+    .listItem-border {
+        border: 0 !important;
+    }
+
+    /* 목록 항목의 좌우 여백 */
+
+    &.layout-desktop .listItem,
+    &.layout-tv .listItem {
+        padding-inline: 15px !important;
+    }
+
+    /* 관리자 카드: 직각 모서리 */
+
+    .cardBox {
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    /* 이전 설정 묶음의 여백과 경계선 */
+
+    &.layout-desktop fieldset.verticalSection-extrabottompadding,
+    &.layout-tv fieldset.verticalSection-extrabottompadding {
+        border-radius: var(--rounded-cards) !important;
+        border-color: #3b3b3b !important;
+        padding: 10px 35px !important;
+    }
+
+    /* 이전 설정 페이지의 상단 여백 */
+
+    #libraryDisplayPage,
+    #metadataImagesConfigurationPage,
+    #metadataNfoPage {
+        margin-top: 40px !important;
+    }
+
+    #mediaLibraryPage {
+        margin-top: 10px !important;
+    }
+
+    /* 활성 장치 목록 정렬 */
+
+    .activeDevices.itemsContainer {
+        margin: 0 !important;
+    }
+
+    .playbackProgress > div {
+        background: var(--primary-accent-color) !important;
+    }
+
+    /* 11. MUI 관리자 목록과 팝업 */
+
+    .MuiAlert-message {
+        color: #fff !important;
+    }
+
+    .MuiDataGrid-root.MuiDataGrid-withBorderColor {
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    .infoBanner {
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    .MuiToggleButton-root.MuiToggleButtonGroup-groupedHorizontal {
+        border-radius: var(--rounded-cards);
+        padding-inline: 15px !important;
+    }
+
+    .MuiAppBar-root.MuiAppBar-positionFixed.MuiAppBar-colorPrimary {
+        background: var(--primary-background-transparent) !important;
+        backdrop-filter: none !important;
+    }
+
+    .MuiList-subheader .MuiListItemButton-root.MuiListItemButton-gutters {
+        border-radius: var(--finweb-radius-pill) !important;
+        margin: 2px 0 !important;
+        transition: background-color 120ms ease, color 120ms ease !important;
+    }
+
+    .MuiList-subheader .MuiListItemButton-root.MuiListItemButton-gutters:not(.Mui-selected) .MuiListItemIcon-root,
+    .MuiList-subheader .MuiListItemButton-root.MuiListItemButton-gutters:not(.Mui-selected) {
+        color: #d1d1d1;
+    }
+
+    .MuiList-subheader .MuiListItemButton-root.MuiListItemButton-gutters:hover:not(.Mui-selected) {
+        transform: none !important;
+        background: rgba(44, 44, 44, 0.7) !important;
+    }
+
+    .MuiListItemButton-root.Mui-selected {
+        background: var(--secondary-accent-color) !important;
+    }
+
+    .MuiListItemButton-root.Mui-selected .MuiListItemIcon-root,
+    .MuiListItemButton-root.Mui-selected {
+        color: var(--primary-accent-color) !important;
+    }
+
+    .MuiListItemIcon-root.MuiSvgIcon-fontSizeMedium {
+        color: inherit !important;
+    }
+
+    .MuiPaper-root.MuiPopover-paper {
+        background: #252525 !important;
+        color: #d1d1d1 !important;
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    .listItemIcon:not(.listItemIcon-transparent):not(.notification_important) {
+        background: var(--secondary-accent-color) !important;
+        color: var(--primary-accent-color) !important;
+    }
+
+    /* 활성 장치 카드의 강조색 배경 */
+
+    .defaultCardBackground1 {
+        background-color: var(--primary-alt1) !important;
+    }
+
+    .defaultCardBackground2 {
+        background-color: var(--primary-alt2) !important;
+    }
+
+    .defaultCardBackground3 {
+        background-color: var(--primary-alt3) !important;
+    }
+
+    .defaultCardBackground4 {
+        background-color: var(--primary-alt4) !important;
+    }
+
+    .defaultCardBackground5 {
+        background-color: var(--primary-alt5) !important;
+    }
+
+    /* 메타데이터 편집기의 트리와 저장 버튼 */
+
+    .jstree-default-large .jstree-node {
+        line-height: 35px !important;
+    }
+
+    .jstree-default .jstree-wholerow-clicked {
+        background: var(--secondary-accent-color) !important;
+    }
+
+    .jstree-wholerow-hovered {
+        background: var(--primary-background-transparent) !important;
+    }
+
+    .jstree-children {
+        margin-left: -10px !important;
+    }
+
+    #editItemMetadataPage .btnHeaderSave {
+        background: var(--primary-accent-color) !important;
+        border-radius: var(--finweb-radius-pill) !important;
+        height: 40px !important;
+        color: white !important;
+    }
+
+    /* 12. 상세 화면의 상단 배경 */
+
+    &.layout-desktop #itemDetailPage .itemBackdrop {
+        height: 35vh;
+    }
+
+    &.layout-desktop #itemDetailPage .detailLogo {
+        top: 5vh;
+    }
+
+    .detailRibbon {
+        background: transparent !important;
+    }
+
+    /* 상세 화면의 재생 및 도구 버튼 그룹 */
+
+    /* 상세 정보 항목: 간격 유지 */
+
+    &.layout-desktop .detailsGroupItem {
+        background: var(--secondary-background-color) !important;
+        padding: 10px 20px !important;
+        border-radius: 0 !important;
+        width: fit-content !important;
+        max-width: max-content !important;
+        display: flex;
+        gap: 1em;
+    }
+
+    /* 상세 정보와 트랙 선택의 라벨 너비 */
+
+    .detailsGroupItem .label,
+    .trackSelections .selectContainer .selectLabel {
+        min-width: 75px;
+        flex-basis: unset;
+        margin: unset;
+    }
+
+    /* 모바일 상세 정보 영역 */
+
+    &.layout-mobile .itemDetailsGroup {
+        background: var(--secondary-background-color) !important;
+        padding: 15px 20px 5px 20px !important;
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    /* 기존 줄거리 박스: 상단 여백은 년도/평점의 겹침 배치를 위한 공간 */
+
+    &.layout-desktop .detailSectionContent {
+        background: var(--secondary-background-color) !important;
+        border-radius: var(--rounded-cards) !important;
+        padding: 16px 20px !important;
+        margin-top: 95px !important;
+    }
+
+    &.layout-mobile .detailSectionContent {
+        background: var(--secondary-background-color) !important;
+        border-radius: var(--rounded-cards) !important;
+        padding: 10px 20px !important;
+    }
+
+    &.layout-desktop .itemName.parentNameLast {
+        margin: 10px;
+
+        /* 모든 방향에 10px 여백 추가 */
+        margin-left: 0;
+
+        /* 왼쪽 여백 제거 */
+    }
+
+    /* 오디오 및 자막 트랙 선택 영역 */
+
+    .trackSelections {
+        background: var(--secondary-background-color) !important;
+        border-radius: var(--rounded-cards) !important;
+        padding: 10px 20px !important;
+        margin-top: 20px !important;
+    }
+
+    /* 트랙 선택창 여백 */
+
+    .trackSelections .selectContainer .detailTrackSelect {
+        padding: 0 10px;
+        margin-left: 10px !important;
+    }
+
+    /* 제목은 박스 밖, 년도/평점은 박스 안에 보이던 기존 위치 유지 */
+
+    &.layout-desktop .infoWrapper {
+        margin-top: 200px !important;
+    }
+
+    &.layout-desktop .nameContainer {
+        position: absolute !important;
+        margin-top: -35px !important;
+    }
+
+    /* Keep all lists after the overview and track selection, including dynamic sections. */
+
+    .detailSection {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .detailSection > * {
+        order: 5;
+        min-width: 0;
+    }
+
+    .detailSection .detailSectionContent {
+        order: 1;
+    }
+
+    .detailSection .recordingFields {
+        order: 2;
+    }
+
+    .detailSection .trackSelections {
+        order: 3;
+    }
+
+    .detailSection .itemDetailsGroup {
+        order: 4;
+    }
+
+    /* 상세 화면의 재생 버튼 */
+
+    &.layout-desktop .mainDetailButtons .btnPlay {
+        position: relative !important;
+        margin-right: -85px !important;
+        padding-right: 20px !important;
+        right: 110px !important;
+        background: var(--primary-accent-color) !important;
+        border-radius: var(--finweb-radius-pill) !important;
+        color: var(--secondary-background-color) !important;
+    }
+
+    /* 방송 편성표의 현재 항목 */
+
+    .programCell-active {
+        background: var(--secondary-background-color) !important;
+    }
+
+    /* 녹화 버튼 위치 */
+
+    .recordingFields {
+        margin: 5px 0 -7px 0 !important;
+    }
+
+    .recordingButton {
+        height: 40px !important;
+    }
+
+    .recordingIcon {
+        color: red !important;
+    }
+
+    /* 상세 부가 정보 간격 */
+
+    /* 13. 하단 음악 플레이어 */
+
+    &.layout-desktop .appfooter .nowPlayingBarInfoContainer {
+        margin-left: 10px !important;
+    }
+
+    &.layout-desktop .volumeOsd {
+        border-radius: var(--rounded-cards) !important;
+        background: var(--secondary-background-transparent) !important;
+    }
+
+    &.layout-desktop .nameContainer .musicParentName {
+        margin-top: 18px !important;
+        margin-right: 22px !important;
+    }
+
+    &.layout-desktop .appfooter .nowPlayingBar {
+        margin-top: 20px !important;
+    }
+
+    &.layout-desktop .appfooter .nowPlayingBar .nowPlayingBarPositionContainer {
+        top: -15px !important;
+    }
+
+    /* 이전 헤더의 화면 너비별 보정 */
+
+    @media (width: 1600px) {
+        &.layout-desktop .headerRight {
+            margin-bottom: 0 !important;
+        }
+
+        &.layout-desktop .emby-button-foreground {
+            top: -4px !important;
+        }
+    }
+
+    @media (max-width: 1599px) {
+        &.layout-desktop .pageTitleWithLogo {
+            margin-left: 25px !important;
+        }
+
+        &.layout-desktop .headerTabs {
+            margin-top: -65px !important;
+        }
+
+        &.layout-desktop .headerRight {
+            margin-right: 15px !important;
+        }
+
+        &.layout-desktop .sectionTabs {
+            width: auto !important;
+            align-self: center !important;
+        }
+
+        &.layout-desktop .emby-button-foreground {
+            top: -2px !important;
+        }
+    }
+
+    /* 14. 에피소드 목록: 원래 너비/가로 배치, 썸네일 130px, 행 140px */
+
+    .listItem:hover {
+        transition: 0.2s;
+        background: rgba(0, 0, 0, 0.4);
+    }
+
+    &:is(.layout-desktop, .layout-mobile) #itemDetailPage .listItem-largeImage[data-type="Episode"]:not(.listItem-withContentWrapper),
+    &:is(.layout-desktop, .layout-mobile) #itemDetailPage .listItem-largeImage[data-type="Episode"] > .listItem-content {
+        height: 140px;
+    }
+
+    /* 너비는 Jellyfin의 기존 19.5vw / 좁은 화면 22vw 규칙을 그대로 사용 */
+
+    &:is(.layout-desktop, .layout-mobile) #itemDetailPage .listItem-largeImage[data-type="Episode"] .listItemImage-large {
+        height: 130px;
+    }
+
+    /* 제목과 버튼은 건드리지 않고, 기본 배치에 표시되는 줄거리만 세 줄 생략 */
+
+    &:is(.layout-desktop, .layout-mobile) #itemDetailPage .listItem-largeImage[data-type="Episode"] :is(.listItem-overview, .listItem-bottomoverview) {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        line-height: 1.25em;
+        max-height: 3.75em;
+    }
+
+    &:is(.layout-desktop, .layout-mobile) #itemDetailPage .listItem-largeImage[data-type="Episode"] :is(.listItem-overview, .listItem-bottomoverview) p {
+        margin-block: 0;
+    }
+
+    /* 16. 이전 대화상자와 메뉴 제목 */
+
+    .dialog {
+        background-color: var(--secondary-background-color) !important;
+    }
+
+    .actionSheetTitle {
+        margin: 10px 20px !important;
+    }
+
+    /* 배경 이미지가 있는 상세 화면의 표면 */
+
+    /* 배경 이미지가 있는 화면의 메뉴 호버 */
+
+    &.layout-desktop:has(.backgroundContainer.withBackdrop) .navMenuOption-selected {
+        backdrop-filter: none !important;
+    }
+
+    &.layout-desktop:has(.backgroundContainer.withBackdrop) .navMenuOption:hover:not(.navMenuOption-selected) {
+        background: var(--primary-background-transparent) !important;
+        backdrop-filter: none !important;
+    }
+
+    /* 18. Finweb 사이드바: 크기와 위치는 앱이 관리 */
+
+    .MuiPaper-root.MuiDrawer-paperAnchorDockedLeft {
+        background: var(--secondary-background-color) !important;
+        border-right: 0 !important;
+    }
+
+    /* 19. MUI 공통: 버튼, 입력창, 팝업, 탭, 키보드 포커스 */
+
+    .MuiButton-root {
+        border-radius: var(--finweb-radius-pill) !important;
+        box-shadow: none !important;
+    }
+
+    .MuiIconButton-root {
+        border-radius: 0 !important;
+    }
+
+    .MuiButtonGroup-root:has(> .MuiButton-root) {
+        gap: 4px !important;
+        box-shadow: none !important;
+        overflow: visible !important;
+    }
+
+    .MuiButtonGroup-root > .MuiButton-root {
+        border: 0 !important;
+        margin: 0 !important;
+    }
+
+    .MuiFilledInput-root,
+    .MuiOutlinedInput-root {
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    .MuiInputBase-root:has(.MuiSelect-select) {
+        border-radius: var(--finweb-radius-pill) !important;
+    }
+
+    .MuiOutlinedInput-notchedOutline {
+        border-radius: inherit !important;
+    }
+
+    .MuiFilledInput-root::before,
+    .MuiFilledInput-root::after {
+        display: none !important;
+    }
+
+    .MuiCard-root,
+    .MuiDialog-paper,
+    .MuiPopover-paper,
+    .MuiAccordion-root {
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    .MuiCard-root,
+    .MuiDialog-paper {
+        background-color: var(--secondary-background-color) !important;
+    }
+
+    .MuiListItemButton-root {
+        border-radius: var(--finweb-radius-pill) !important;
+    }
+
+    .MuiAccordion-root::before {
+        display: none !important;
+    }
+
+    .MuiAccordionSummary-root {
+        border-radius: inherit !important;
+    }
+
+    .MuiTabs-indicator {
+        display: none;
+    }
+
+    .MuiToggleButtonGroup-horizontal {
+        gap: 4px;
+    }
+
+    .MuiToggleButtonGroup-root > .MuiToggleButton-root {
+        border-radius: var(--finweb-radius-pill) !important;
+    }
+
+    .alphaPicker-fixed-right > .MuiPaper-root {
+        border-radius: var(--rounded-cards) !important;
+    }
+
+    .MuiAppBar-root div:has(> .MuiInputBase-root) {
+        border-radius: var(--finweb-radius-pill) !important;
+    }
+
+    :is(.MuiButton-root, .MuiIconButton-root, .MuiTab-root, .MuiToggleButton-root, .MuiMenuItem-root).Mui-focusVisible {
+        outline: 2px solid var(--primary-accent-color);
+        outline-offset: -2px;
+    }
+
+    /* 20. Finweb 상단 사용자, 라이브러리 개수, 정렬 및 하단 페이지 그룹 */
+
+    .finweb-layout :is(.finweb-library-summary, .finweb-library-actions, .finweb-pagination-footer) .MuiButton-root {
+        box-sizing: border-box;
+        min-width: 36px !important;
+        height: 36px;
+        margin: 0 !important;
+        padding: 6px 12px;
+    }
+
+    .finweb-layout :is(.finweb-library-actions, .finweb-pagination-footer) .MuiButtonGroup-text .MuiButton-root {
+        width: 36px !important;
+        min-width: 36px !important;
+        padding: 0 !important;
+        flex-shrink: 0;
+    }
+
+    .finweb-layout .finweb-library-summary .MuiChip-root,
+    .finweb-layout .finweb-pagination-footer > .MuiTypography-root {
+        box-sizing: border-box;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 16ch;
+        max-width: 100%;
+        height: 32px;
+        background: transparent !important;
+        color: inherit !important;
+        border-radius: var(--finweb-radius-pill) !important;
+        box-shadow: none !important;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 1.25;
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* 21. 2배속 표시: Finweb 자체 아이콘과 중앙 정렬 */
+
+    /* 22. 사각형 테마 마감: 둥근 기본 스타일이 남는 공통 요소까지 처리 */
+
+    :is(
+    .MuiButtonBase-root, .MuiButtonGroup-root, .MuiToggleButtonGroup-root,
+    .MuiChip-root, .MuiTooltip-tooltip, .MuiAlert-root, .MuiSnackbarContent-root,
+    .MuiPaginationItem-root, .MuiDrawer-paper, .MuiCheckbox-root,
+    .MuiInputBase-root, .MuiPaper-outlined,
+    .emby-button, .paper-icon-button-light, .emby-tab-button,
+    .emby-input, .emby-textarea, .emby-select, .checkboxOutline,
+    .cardContent, .cardPadder, .cardImageContainer, .cardOverlayContainer, .blurhash-canvas,
+    .cardBox, .listItemImage, .listItemIcon, .countIndicator, .playedIndicator,
+    .dialog, .actionSheet, .toast, .toastVisible, .sliderBubble, .chapterThumb
+) {
+        border-radius: 0 !important;
+    }
+
+    /* 23. 사이드바: 캡슐 대신 직사각형 행과 왼쪽 선택선 */
+
+    .finweb-drawer .MuiDrawer-paper {
+        border-right: 0 !important;
+        background: var(--finweb-sidebar-background) !important;
+        border-inline-end: 1px solid var(--finweb-line-subtle) !important;
+    }
+
+    .finweb-drawer .finweb-navigation .navMenuOption {
+        width: calc(100% - 24px) !important;
+        margin: 2px 12px !important;
+        padding: 10px 13px !important;
+        border-radius: 0 !important;
+        background: transparent;
+        border-inline-start: 3px solid transparent !important;
+        transition: background-color 120ms ease, color 120ms ease !important;
+    }
+
+    .finweb-drawer .finweb-navigation .navMenuOption:not(.navMenuOption-selected) {
+        color: var(--finweb-muted) !important;
+    }
+
+    .finweb-drawer .finweb-navigation .navMenuOption-selected {
+        border-inline-start-color: var(--primary-accent-color) !important;
+        background: var(--secondary-background-color) !important;
+        color: var(--finweb-text) !important;
+    }
+
+    .finweb-drawer .finweb-navigation .navMenuOption:hover:not(.navMenuOption-selected) {
+        background: var(--finweb-hover) !important;
+        color: var(--finweb-text) !important;
+        transform: none !important;
+    }
+
+    .finweb-drawer .sidebarHeader {
+        color: var(--finweb-muted);
+        border-top: 1px solid var(--finweb-line-subtle);
+    }
+
+    /* 24. 상단 세 그룹: 불투명 표면과 얇은 경계, 배치와 고정 위치는 유지 */
+
+    .finweb-layout :is(.finweb-header-actions, .finweb-library-summary, .finweb-library-actions, .finweb-pagination-footer) {
+        box-sizing: border-box;
+        border: 1px solid var(--finweb-line-subtle);
+        border-radius: 0 !important;
+        background: var(--secondary-background-color) !important;
+        color: var(--finweb-text) !important;
+        box-shadow: none !important;
+        backdrop-filter: none !important;
+    }
+
+    .finweb-layout :is(.finweb-library-summary, .finweb-library-actions, .finweb-pagination-footer) {
+        box-sizing: border-box;
+        padding: 4px !important;
+    }
+
+    .finweb-layout .finweb-library-summary {
+        gap: 4px;
+    }
+
+    .finweb-layout .finweb-library-summary > .MuiBox-root:has(> .MuiChip-root) {
+        margin-left: 0;
+        margin-inline-start: 0;
+    }
+
+    .finweb-layout .finweb-library-summary .MuiChip-root {
+        border: 0 !important;
+        border-inline-start: 1px solid var(--finweb-line) !important;
+        color: var(--finweb-muted) !important;
+    }
+
+    .finweb-layout .finweb-pagination-footer > .MuiTypography-root {
+        padding: 0 12px;
+        border-inline-end: 1px solid var(--finweb-line);
+        color: var(--finweb-muted) !important;
+    }
+
+    .finweb-layout .finweb-pagination-footer {
+        width: fit-content;
+        max-width: 100%;
+        margin: 24px auto;
+        gap: 4px;
+    }
+
+    /* 24-1. 상단 사용자 그룹: 40px 버튼 + 위아래 2px 여백 + 테두리 = 높이 46px */
+
+    .finweb-layout .finweb-header-actions {
+        padding: 2px 4px;
+        gap: 4px;
+    }
+
+    .finweb-layout .finweb-header-actions > .MuiIconButton-root {
+        box-sizing: border-box;
+        flex: 0 0 40px;
+        width: 40px;
+        min-width: 40px;
+        height: 40px;
+        padding: 8px !important;
+    }
+
+    .finweb-layout .finweb-header-actions > .MuiIconButton-root:has(.MuiAvatar-root) {
+        padding: 5px !important;
+    }
+
+    .finweb-layout .finweb-header-actions .MuiAvatar-root {
+        width: 30px;
+        height: 30px;
+        border-radius: 0 !important;
+    }
+
+    .finweb-layout .finweb-header-actions .MuiAvatar-img {
+        border-radius: 0 !important;
+    }
+
+    /* 25. 주요 동작은 파란색, 그 외 버튼은 중립 표면; 비활성 및 위험 색상은 보존 */
+
+    .MuiButton-root.MuiButton-containedPrimary:not(.Mui-disabled),
+    .button-submit:not(:disabled),
+    &.layout-desktop .mainDetailButtons .btnPlay {
+        background: var(--finweb-action) !important;
+        color: #fff !important;
+    }
+
+    .MuiButton-root.MuiButton-containedPrimary:not(.Mui-disabled):hover,
+    .button-submit:not(:disabled):hover,
+    &.layout-desktop .mainDetailButtons .btnPlay:hover {
+        background: #0353e9 !important;
+    }
+
+    .MuiButton-root.MuiButton-outlined:not(.Mui-disabled) {
+        border: 1px solid currentColor !important;
+    }
+
+    .MuiButtonGroup-root > .MuiButton-root.MuiButton-outlined:not(.Mui-disabled) {
+        border: 1px solid currentColor !important;
+    }
+
+    .MuiButton-root.MuiButton-containedError:not(.Mui-disabled) {
+        background: var(--jf-palette-error-main, #c62828) !important;
+    }
+
+    :is(.MuiIconButton-root, .MuiButton-text, .MuiToggleButton-root):hover:not(.Mui-disabled) {
+        background-color: var(--finweb-hover);
+    }
+
+    /* 26. 입력창: 직각 표면, 아래 경계선, 명확한 포커스 */
+
+    .MuiFilledInput-root,
+    .emby-input,
+    .emby-textarea,
+    .emby-select-withcolor {
+        background-color: var(--secondary-background-color) !important;
+        border-radius: 0 !important;
+    }
+
+    .MuiFilledInput-root {
+        background-color: var(--secondary-background-color) !important;
+        box-shadow: inset 0 -1px 0 var(--finweb-line);
+    }
+
+    .MuiFilledInput-root.Mui-focused {
+        outline: 2px solid var(--primary-accent-color);
+        outline-offset: -2px;
+    }
+
+    .MuiFilledInput-root.Mui-error {
+        outline: 2px solid var(--jf-palette-error-main, #c62828);
+        outline-offset: -2px;
+        outline-color: var(--jf-palette-error-main, #c62828);
+    }
+
+    /* 27. 메뉴와 탭: 항목을 둥근 칩으로 만들지 않고 선택선으로 구분 */
+
+    .MuiMenuItem-root {
+        border-radius: var(--finweb-radius-pill) !important;
+        margin: 0 !important;
+        border-inline-start: 2px solid transparent;
+    }
+
+    .MuiMenuItem-root.Mui-selected {
+        border-inline-start-color: var(--primary-accent-color);
+        background-color: var(--finweb-hover) !important;
+    }
+
+    .MuiMenuItem-root.Mui-selected:hover {
+        background-color: #3d3d3d !important;
+    }
+
+    .MuiTab-root {
+        border-radius: var(--finweb-radius-pill) !important;
+        border-bottom: 2px solid transparent;
+    }
+
+    .MuiTab-root.Mui-selected {
+        background-color: transparent !important;
+        border-bottom-color: var(--primary-accent-color);
+    }
+
+    .MuiToggleButton-root.Mui-selected {
+        background-color: var(--secondary-accent-color) !important;
+        box-shadow: inset 0 -2px 0 var(--primary-accent-color);
+    }
+
+    /* 28. 상세 화면: 원본의 어두운 정보 박스와 반투명 배경, 사각 모서리 */
+
+    #itemDetailPage {
+        --primary-background-color: #101010;
+        --secondary-background-color: #181818;
+        --primary-background-transparent: rgba(35, 35, 35, 0.5);
+        --blur: 10px;
+    }
+
+    /* 배경 이미지를 가리는 모드에서는 위아래 영역에 같은 바탕색 사용 */
+
+    #itemDetailPage.noBackdropTransparency .detailPageWrapperContainer {
+        background-color: var(--primary-background-color) !important;
+    }
+
+    #itemDetailPage .detailPageSecondaryContainer {
+        background: transparent !important;
+    }
+
+    /* 10.11의 detailPageContent가 맡던 여백: 다음/시리즈와 같은 시작선 */
+
+    &:is(.layout-desktop, .layout-tv) #itemDetailPage .detailPageSecondaryContainer {
+        padding-inline-start: 32.45vw;
+        padding-inline-end: 2%;
+    }
+
+    &.layout-mobile #itemDetailPage .detailPageSecondaryContainer {
+        padding-inline: 5%;
+    }
+
+    &.layout-desktop .detailsGroupItem,
+    &.layout-mobile .itemDetailsGroup,
+    &.layout-desktop .detailSectionContent,
+    &.layout-mobile .detailSectionContent,
+    .trackSelections {
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
+
+    &.layout-desktop #itemDetailPage:not(.noBackdropTransparency) .detailsGroupItem,
+    &.layout-desktop #itemDetailPage:not(.noBackdropTransparency) .detailSectionContent,
+    &.layout-desktop #itemDetailPage:not(.noBackdropTransparency) .trackSelections {
+        background: var(--primary-background-transparent) !important;
+        backdrop-filter: blur(var(--blur)) !important;
+    }
+
+    #itemDetailPage .mainDetailButtons {
+        backdrop-filter: blur(var(--blur)) !important;
+    }
+
+    .mainDetailButtons {
+        background: var(--primary-background-transparent) !important;
+        backdrop-filter: none !important;
+        border-radius: 0 !important;
+        box-shadow: none !important;
+    }
+
+    &.layout-desktop .mainDetailButtons .detailButton {
+        flex-direction: row !important;
+        border-radius: 0 !important;
+    }
+
+    /* 29. 팝업과 로그인: 직각 표면, 큰 그림자 대신 얇은 테두리 */
+
+    .MuiDialog-paper,
+    .MuiPopover-paper,
+    .dialog,
+    .actionSheet,
+    &.layout-desktop #loginPage .padded-left.padded-right.padded-bottom-page.margin-auto-y {
+        border-radius: 0 !important;
+        outline: 1px solid var(--finweb-line);
+        outline-offset: -1px;
+        box-shadow: none !important;
+    }
+
+    .MuiPopover-paper,
+    .MuiTooltip-tooltip {
+        background: var(--secondary-background-color) !important;
+        color: var(--finweb-text) !important;
+    }
+
+    .MuiAccordion-root {
+        border: 0 !important;
+        box-shadow: none !important;
+        border-bottom: 1px solid var(--finweb-line-subtle) !important;
+        margin: 0 !important;
+    }
+
+    /* 30. 포스터 진행률: 둥근 떠 있는 막대 대신 하단 직선 */
+
+    .fullInnerCardFooter {
+        margin: auto !important;
+        padding: 0 !important;
+        backdrop-filter: none !important;
+        bottom: 0 !important;
+        width: 100% !important;
+        border-radius: 0 !important;
+    }
+
+    .itemProgressBar:not(.playbackProgress):not(.transcodingProgress):not(.backgroundProgress) {
+        background: var(--primary-background-transparent) !important;
+        height: 4px !important;
+        border-radius: 0 !important;
+        backdrop-filter: none !important;
+    }
+
+    .itemProgressBarForeground {
+        border-radius: 0 !important;
+    }
+
+    .ff-indicator {
+        top: calc(5% + env(safe-area-inset-top, 0px));
+        padding: 0.4em 0.8em;
+        font-size: 2.2em;
+        font-weight: bold;
+        background-color: rgba(0, 0, 0, 0.65);
+        border-radius: 0 !important;
+        outline: 1px solid var(--finweb-line);
+        outline-offset: -1px;
+        backdrop-filter: none !important;
+    }
+
+    /* 31. 접근성: 확대 효과 제거, 키보드 포커스와 동작 감소 설정 유지 */
+
+    :is(.navMenuOption, .listItem, .upNextDialog-button):hover {
+        transform: none !important;
+    }
+
+    :is(.MuiButton-root, .MuiIconButton-root, .MuiTab-root, .MuiToggleButton-root, .MuiMenuItem-root).Mui-focusVisible,
+    .finweb-drawer .finweb-navigation .navMenuOption:focus-visible {
+        outline: 2px solid var(--primary-accent-color);
+        outline-offset: -2px;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        .navMenuOption,
+        .listItem,
+        .upNextDialog-button,
+        .ff-indicator {
+            transition: none !important;
+        }
+    }
+
+    /* Metadata is part of the overview panel, not absolutely positioned over it. */
+
+    #itemDetailPage .finweb-detail-metadata {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 20px;
+    }
+
+    #itemDetailPage .finweb-detail-metadata .itemMiscInfo {
+        position: static;
+        margin: 0;
+        min-width: 0;
+    }
+
+    #itemDetailPage .finweb-detail-metadata:not(:has(> :not(.hide))) {
+        display: none;
+    }
+
+    #itemDetailPage .detailSectionContent > :first-child {
+        margin-top: 0;
+    }
+
+    #itemDetailPage .detailSectionContent > :last-child {
+        margin-bottom: 0;
+    }
+
+    /* Login: the official server backdrop stays behind a readable, responsive form. */
+
+    #loginPage {
+        background: transparent !important;
+        box-sizing: border-box;
+        padding: 24px 16px 40px;
+    }
+
+    #loginPage > .margin-auto-y {
+        box-sizing: border-box;
+        width: 100%;
+        max-width: 600px;
+        margin: 24px auto !important;
+        padding: 28px !important;
+        background: var(--secondary-background-color);
+        border: 1px solid var(--finweb-line);
+    }
+
+    #loginPage .readOnlyContent,
+    #loginPage .manualLoginForm {
+        width: 100%;
+        max-width: none;
+    }
+
+    #loginPage .loginDisclaimerContainer {
+        display: block;
+        margin-top: 24px;
+        overflow-wrap: anywhere;
+    }
+
+    #loginPage .squareCard {
+        width: 25%;
+    }
+
+    #loginPage .visualLoginForm {
+        min-height: 100px;
+    }
+
+    .finweb-brand-logo {
+        display: block;
+        width: 140px;
+        height: 40px;
+        max-width: 100%;
+        object-fit: contain;
+    }
+
+    @media (max-width: 600px) {
+        #loginPage > .margin-auto-y {
+            padding: 20px !important;
+            margin-top: 8px !important;
+        }
+
+        #loginPage .squareCard {
+            width: 50%;
+        }
+
+        .finweb-brand-logo {
+            width: 120px;
+            height: 35px;
+        }
+    }
+}

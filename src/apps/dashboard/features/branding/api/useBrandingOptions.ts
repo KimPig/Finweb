@@ -3,7 +3,7 @@ import { getBrandingApi } from '@jellyfin/sdk/lib/utils/api/branding-api';
 import { queryOptions, useQuery } from '@tanstack/react-query';
 import type { AxiosRequestConfig } from 'axios';
 
-import { useApi } from 'hooks/useApi';
+import { useBrandingApi } from 'hooks/useBrandingApi';
 
 export const QUERY_KEY = 'BrandingOptions';
 
@@ -19,12 +19,11 @@ const fetchBrandingOptions = async (
 export const getBrandingOptionsQuery = (
     api?: Api
 ) => queryOptions({
-    queryKey: [ QUERY_KEY ],
+    queryKey: [ QUERY_KEY, api?.basePath ],
     queryFn: ({ signal }) => fetchBrandingOptions(api!, { signal }),
     enabled: !!api
 });
 
 export const useBrandingOptions = () => {
-    const { api } = useApi();
-    return useQuery(getBrandingOptionsQuery(api));
+    return useQuery(getBrandingOptionsQuery(useBrandingApi()));
 };

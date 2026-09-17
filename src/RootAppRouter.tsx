@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@mui/material/styles';
-import React from 'react';
+import React, { useLayoutEffect } from 'react';
 import {
     RouterProvider,
     createHashRouter,
@@ -13,11 +13,14 @@ import { APP_ROUTES as LEGACY_APP_ROUTES } from 'apps/legacy/routes/routes';
 import { WIZARD_APP_ROUTES } from 'apps/wizard/routes/routes';
 import AppHeader from 'components/AppHeader';
 import Backdrop from 'components/Backdrop';
+import CustomJavaScript from 'components/CustomJavaScript';
+import MobileAppNotice from 'components/MobileAppNotice';
 import layoutManager from 'components/layoutManager';
 import BangRedirect from 'components/router/BangRedirect';
 import { createRouterHistory } from 'components/router/routerHistory';
-import appTheme from 'themes';
+import appTheme, { finwebTheme } from 'themes';
 import { ThemeStorageManager } from 'themes/themeStorageManager';
+import { usesFinwebTheme } from 'utils/finweb/themeScope';
 
 const router = createHashRouter([
     {
@@ -46,19 +49,26 @@ export default function RootAppRouter() {
  */
 function RootAppLayout() {
     const location = useLocation();
+    const isFinweb = usesFinwebTheme(location.pathname);
+    useLayoutEffect(() => {
+        document.documentElement.toggleAttribute('data-finweb-theme', isFinweb);
+        return () => document.documentElement.removeAttribute('data-finweb-theme');
+    }, [isFinweb]);
     const isNewLayoutPath = Object.values(DASHBOARD_APP_PATHS)
         .some(path => location.pathname.startsWith(`/${path}`));
 
     return (
         <ThemeProvider
-            theme={appTheme}
+            theme={isFinweb ? finwebTheme : appTheme}
             defaultMode='dark'
             storageManager={ThemeStorageManager}
         >
             <Backdrop />
+            <CustomJavaScript />
             <AppHeader isHidden={layoutManager.modern || isNewLayoutPath} />
 
             <Outlet />
+            <MobileAppNotice pathname={location.pathname} />
         </ThemeProvider>
     );
 }

@@ -37,6 +37,95 @@ function createVideoFrameHarness() {
 }
 
 describe('SubtitleClock', () => {
+    it('retains an immediately paused first frame across pipelines but resets while no pipeline exists', () => {
+        const video = document.createElement('video');
+        Object.defineProperty(video, 'readyState', { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA });
+        const clock = new SubtitleClock(video);
+        video.dispatchEvent(new Event('playing'));
+        video.dispatchEvent(new Event('pause'));
+        clock.dispose();
+        expect(video.played.length).toBe(0);
+        const replacement = new SubtitleClock(video);
+        expect(replacement.snapshot().videoFramePresented).toBe(true);
+        replacement.dispose();
+        video.dispatchEvent(new Event('loadstart'));
+        const nextSource = new SubtitleClock(video);
+        expect(nextSource.snapshot().videoFramePresented).toBe(false);
+        nextSource.dispose();
+    });
+
+    it('recovers presentation from real progress if supported frame callbacks stop arriving', () => {
+        const harness = createVideoFrameHarness();
+        Object.defineProperties(harness.video, {
+            readyState: { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA },
+            currentTime: { configurable: true, writable: true, value: 0 }
+        });
+        const clock = new SubtitleClock(harness.video);
+        harness.video.dispatchEvent(new Event('playing'));
+        expect(clock.snapshot().videoFramePresented).toBe(false);
+        harness.video.currentTime = 0.25;
+        harness.video.dispatchEvent(new Event('timeupdate'));
+        expect(clock.snapshot().videoFramePresented).toBe(true);
+        clock.dispose();
+    });
+
+    it('waits for a presented frame, retains it while paused, and rejects callbacks from the previous source', () => {
+        const harness = createVideoFrameHarness();
+        Object.defineProperty(harness.video, 'readyState', { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA });
+        const clock = new SubtitleClock(harness.video);
+        for (const event of ['loadedmetadata', 'loadeddata', 'canplay', 'playing']) {
+            harness.video.dispatchEvent(new Event(event));
+            expect(clock.snapshot().videoFramePresented).toBe(false);
+        }
+        const callback = [...harness.callbacks.values()][0];
+        callback(0, {} as VideoFrameCallbackMetadata);
+        expect(clock.snapshot().videoFramePresented).toBe(true);
+        for (const event of ['pause', 'waiting', 'seeking', 'seeked', 'ratechange']) {
+            harness.video.dispatchEvent(new Event(event));
+            expect(clock.snapshot().videoFramePresented).toBe(true);
+        }
+        const stale = [...harness.callbacks.values()].at(-1)!;
+        harness.video.dispatchEvent(new Event('emptied'));
+        stale(1, {} as VideoFrameCallbackMetadata);
+        expect(clock.snapshot().videoFramePresented).toBe(false);
+        clock.dispose();
+        stale(2, {} as VideoFrameCallbackMetadata);
+        expect(clock.snapshot().videoFramePresented).toBe(false);
+    });
+
+    it('does not treat preloaded paused frames as playback and supports the playing fallback', () => {
+        const harness = createVideoFrameHarness();
+        Object.defineProperties(harness.video, {
+            paused: { configurable: true, value: true },
+            readyState: { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA }
+        });
+        const clock = new SubtitleClock(harness.video);
+        clock.onVideoFrame(0, {} as VideoFrameCallbackMetadata);
+        expect(clock.snapshot().videoFramePresented).toBe(false);
+        clock.dispose();
+        const video = document.createElement('video');
+        Object.defineProperty(video, 'readyState', { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA });
+        const fallback = new SubtitleClock(video);
+        video.dispatchEvent(new Event('loadeddata'));
+        expect(fallback.snapshot().videoFramePresented).toBe(false);
+        video.dispatchEvent(new Event('playing'));
+        expect(fallback.snapshot().videoFramePresented).toBe(true);
+        video.dispatchEvent(new Event('pause'));
+        expect(fallback.snapshot().videoFramePresented).toBe(true);
+        fallback.dispose();
+    });
+
+    it('recognizes an already played paused video when a pipeline attaches late', () => {
+        const video = document.createElement('video');
+        Object.defineProperties(video, {
+            readyState: { configurable: true, value: HTMLMediaElement.HAVE_CURRENT_DATA },
+            played: { configurable: true, value: { length: 1 } }
+        });
+        const clock = new SubtitleClock(video);
+        expect(clock.snapshot().videoFramePresented).toBe(true);
+        clock.dispose();
+    });
+
     it('recovers from waiting when decoded frames advance without another playing event', () => {
         const harness = createVideoFrameHarness();
         const clock = new SubtitleClock(harness.video);

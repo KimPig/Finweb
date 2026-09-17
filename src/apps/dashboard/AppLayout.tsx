@@ -3,8 +3,8 @@ import { type Theme } from '@mui/material/styles';
 import useMediaQuery from '@mui/material/useMediaQuery';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
-import React, { FC, StrictMode, useCallback, useEffect, useState } from 'react';
-import { Outlet, useLocation } from 'react-router-dom';
+import React, { FC, StrictMode, useCallback, useLayoutEffect, useState } from 'react';
+import { Outlet, useLocation, useNavigation } from 'react-router-dom';
 
 import AppBody from 'components/AppBody';
 import OffsetAppBar from 'components/OffsetAppBar';
@@ -15,6 +15,7 @@ import { appRouter } from 'components/router/appRouter';
 import ThemeCss from 'components/ThemeCss';
 import { useApi } from 'hooks/useApi';
 import { useLocale } from 'hooks/useLocale';
+import { usesFinwebTheme } from 'utils/finweb/themeScope';
 
 import AppTabs from './components/AppTabs';
 import AppDrawer from './components/drawer/AppDrawer';
@@ -26,6 +27,8 @@ import './AppOverrides.scss';
 export const Component: FC = () => {
     const [ isDrawerActive, setIsDrawerActive ] = useState(false);
     const location = useLocation();
+    const navigation = useNavigation();
+    const leavingDashboard = Boolean(navigation.location && usesFinwebTheme(navigation.location.pathname));
     const { user } = useApi();
     const { dateFnsLocale } = useLocale();
 
@@ -39,7 +42,7 @@ export const Component: FC = () => {
     }, [ isDrawerActive, setIsDrawerActive ]);
 
     // Update body class
-    useEffect(() => {
+    useLayoutEffect(() => {
         document.body.classList.add('dashboardDocument');
 
         return () => {
@@ -60,6 +63,7 @@ export const Component: FC = () => {
                     <OffsetAppBar
                         dense
                         sx={{
+                            visibility: leavingDashboard ? 'hidden' : 'visible',
                             width: {
                                 xs: '100%',
                                 md: isDrawerAvailable ? `calc(100% - ${DRAWER_WIDTH}px)` : '100%'

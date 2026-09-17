@@ -22,3 +22,12 @@ config.json
 
 # environment related
 .envrc
+
+# Local recovery archives and retired experiments
+/.local-backup/
+
+# Private working notes and AI handoffs
+/*.local.md
+
+# User-exported diagnostic data
+finweb-subtitle-diagnostics*.json

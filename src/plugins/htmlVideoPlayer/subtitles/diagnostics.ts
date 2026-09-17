@@ -23,6 +23,20 @@ export interface SubtitleDiagnosticDetails {
     paused?: boolean;
     fullyResolved?: boolean;
     burnIn?: boolean;
+    probeMode?: 'current' | 'minimal' | 'other';
+    probePass?: number;
+    total?: number;
+    failures?: number;
+    networkState?: number;
+    bufferedEnd?: number;
+    transferSize?: number;
+    encodedBodySize?: number;
+    decodedBodySize?: number;
+    requestStart?: number;
+    responseStart?: number;
+    responseEnd?: number;
+    probeMediaResource?: boolean;
+    protocol?: 'http/1.1' | 'h2' | 'h3' | 'other';
 }
 
 interface Entry extends SubtitleDiagnosticDetails {
@@ -48,14 +62,16 @@ function knownValue<T extends string>(value: T | undefined, values: string[]): T
 
 function safeDetails(details: SubtitleDiagnosticDetails): SubtitleDiagnosticDetails {
     const result: SubtitleDiagnosticDetails = {};
-    for (const key of ['source', 'slot', 'trackIndex', 'status', 'count', 'bytes', 'parentTrace', 'contentLength', 'idleMs', 'timerLagMs', 'mediaTime', 'playbackRate', 'readyState'] as const) {
+    for (const key of ['source', 'slot', 'trackIndex', 'status', 'count', 'bytes', 'parentTrace', 'contentLength', 'idleMs', 'timerLagMs', 'mediaTime', 'playbackRate', 'readyState', 'probePass', 'total', 'failures', 'networkState', 'bufferedEnd', 'transferSize', 'encodedBodySize', 'decodedBodySize', 'requestStart', 'responseStart', 'responseEnd'] as const) {
         const value = details[key];
         if (typeof value === 'number' && Number.isFinite(value)) result[key] = value;
     }
-    for (const key of ['paused', 'fullyResolved', 'burnIn'] as const) {
+    for (const key of ['paused', 'fullyResolved', 'burnIn', 'probeMediaResource'] as const) {
         if (typeof details[key] === 'boolean') result[key] = details[key];
     }
     result.codec = knownValue(details.codec, ['ass', 'ssa', 'srt', 'subrip', 'vtt', 'webvtt']);
+    result.probeMode = knownValue(details.probeMode, ['current', 'minimal']);
+    result.protocol = knownValue(details.protocol, ['http/1.1', 'h2', 'h3']);
     result.playMethod = knownValue(details.playMethod, ['DirectPlay', 'DirectStream', 'Transcode']);
     result.resourceKind = knownValue(details.resourceKind, ['subtitle', 'font']);
     result.outcome = knownValue(details.outcome, ['complete', 'http-error', 'fetch-error', 'body-error', 'selection-cancelled', 'preparation-timeout', 'aborted', 'consumer-cancelled', 'unobserved', 'observation-limit']);
@@ -69,6 +85,11 @@ function safeDetails(details: SubtitleDiagnosticDetails): SubtitleDiagnosticDeta
 
 export function getSubtitleDiagnosticEpoch() {
     return enabled ? epoch : undefined;
+}
+
+export function isSubtitlePrefetchNoticeEnabled() {
+    return typeof window !== 'undefined'
+        && new URLSearchParams(window.location.search).get('subtitlePrefetchNotice') === '1';
 }
 
 export class SubtitleDiagnosticTrace {
@@ -135,5 +156,6 @@ declare global {
 
 if (typeof window !== 'undefined') {
     window.finwebSubtitleDiagnostics = subtitleDiagnostics;
-    if (new URLSearchParams(window.location.search).get('subtitleDiagnostics') === '1') subtitleDiagnostics.start();
+    const query = new URLSearchParams(window.location.search);
+    if (query.get('subtitleDiagnostics') === '1') subtitleDiagnostics.start();
 }

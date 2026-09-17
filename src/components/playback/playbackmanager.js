@@ -23,6 +23,8 @@ import alert from '../alert';
 import { includesAny } from '../../utils/container.ts';
 import { getItems } from '../../utils/jellyfin-apiclient/getItems.ts';
 import { getItemBackdropImageUrl } from '../../utils/jellyfin-apiclient/backdropImage';
+import { refreshHomePlaybackQueries } from '../../utils/query/refreshHomePlaybackQueries';
+import { beginHomePlaybackReport } from '../../utils/query/pendingHomePlaybackReports';
 
 import { PlayerEvent } from 'apps/legacy/features/playback/constants/playerEvent';
 import { bindMediaSegmentManager } from 'apps/legacy/features/playback/utils/mediaSegmentManager';
@@ -97,10 +99,26 @@ function reportPlayback(playbackManagerInstance, state, player, reportPlaylist, 
     }
 
     const apiClient = ServerConnections.getApiClient(serverId);
+    const reportUserId = apiClient.getCurrentUserId();
     const reportPlaybackPromise = apiClient[method](info);
+    const pendingHomeReport = method === 'reportPlaybackStopped' && reportUserId ?
+        beginHomePlaybackReport(serverId, reportUserId) : null;
     // Notify that report has been sent
-    reportPlaybackPromise.then(() => {
+    void reportPlaybackPromise.then(async () => {
         Events.trigger(playbackManagerInstance, 'reportplayback', [true]);
+        if (pendingHomeReport) {
+            const report = { serverId, userId: reportUserId, id: pendingHomeReport.id };
+            try {
+                await refreshHomePlaybackQueries(report.userId);
+                Events.trigger(playbackManagerInstance, 'homeplaybackreportready', [report]);
+            } catch (error) {
+                console.warn('[playbackmanager] failed to refresh home playback queries', error);
+            }
+        }
+    }).catch(error => {
+        if (pendingHomeReport) console.warn('[playbackmanager] playback stop report failed', error);
+    }).finally(() => {
+        pendingHomeReport?.finish();
     });
 }
 
@@ -462,6 +480,10 @@ async function getPlaybackInfo(player, apiClient, item, deviceProfile, mediaSour
     if (options.secondarySubtitleStreamIndex != null) {
         query.SecondarySubtitleStreamIndex = options.secondarySubtitleStreamIndex;
     }
+    if (player.supportsSubtitles === false) {
+        query.SubtitleStreamIndex = -1;
+        query.SecondarySubtitleStreamIndex = -1;
+    }
     if (options.enableDirectPlay != null) {
         query.EnableDirectPlay = options.enableDirectPlay;
     }
@@ -567,6 +589,7 @@ function getLiveStream(player, apiClient, item, playSessionId, deviceProfile, me
     if (options.subtitleStreamIndex != null) {
         query.SubtitleStreamIndex = options.subtitleStreamIndex;
     }
+    if (player.supportsSubtitles === false) query.SubtitleStreamIndex = -1;
 
     // lastly, enforce player overrides for special situations
     if (query.EnableDirectStream !== false
@@ -1525,6 +1548,7 @@ export class PlaybackManager {
         }
 
         self.setSubtitleStreamIndex = function (index, player) {
+            if ((player || self._currentPlayer)?.supportsSubtitles === false) return;
             player = player || self._currentPlayer;
             if (player && !enableLocalPlaylistManagement(player)) {
                 return player.setSubtitleStreamIndex(index);
@@ -1590,6 +1614,7 @@ export class PlaybackManager {
         };
 
         self.setSecondarySubtitleStreamIndex = function (index, player) {
+            if ((player || self._currentPlayer)?.supportsSubtitles === false) return;
             player = player || self._currentPlayer;
             if (!self.playerHasSecondarySubtitleSupport(player)) return;
             if (player && !enableLocalPlaylistManagement(player)) {
@@ -1828,6 +1853,7 @@ export class PlaybackManager {
 
                 sendProgressUpdate(player, 'timeupdate');
             }, function (e) {
+                if (e?.code === 'FINWEB_PLAYBACK_CANCELLED') return;
                 playerData.isChangingStream = false;
 
                 onPlaybackError.call(player, e, {
@@ -2450,6 +2476,7 @@ export class PlaybackManager {
         }
 
         function onPlaybackRejection(e) {
+            if (e?.code === 'FINWEB_PLAYBACK_CANCELLED') return Promise.reject(e);
             cancelPlayback();
 
             let displayErrorCode = 'ErrorDefault';
@@ -2867,6 +2894,10 @@ export class PlaybackManager {
         };
 
         function createStreamInfo(apiClient, type, item, mediaSource, startPosition, player) {
+            if (player.supportsSubtitles === false) {
+                mediaSource.DefaultSubtitleStreamIndex = -1;
+                mediaSource.DefaultSecondarySubtitleStreamIndex = -1;
+            }
             let mediaUrl;
             let contentType;
             let transcodingOffsetTicks = 0;

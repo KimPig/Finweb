@@ -34,8 +34,10 @@ export function computeAssRenderSize(width: number, height: number, pixelRatio: 
 
 interface AssRendererOptions {
     videoElement: HTMLVideoElement;
-    subtitleUrl: string;
+    subtitleUrl?: string;
+    subtitleContent?: string;
     fonts: string[];
+    fallbackFont?: string;
     fallbackFonts?: string[];
     workerUrl: string;
     legacyWorkerUrl: string;
@@ -90,6 +92,7 @@ export class AssRendererAdapter implements SubtitleRenderer {
     active = false;
     disposed = false;
     failed = false;
+    videoFramePresented = false;
 
     constructor(
         options: AssRendererOptions,
@@ -128,6 +131,8 @@ export class AssRendererAdapter implements SubtitleRenderer {
 
     update(snapshot: SubtitleClockSnapshot) {
         if (this.disposed || this.failed || !this.active) return;
+        this.videoFramePresented = snapshot.videoFramePresented;
+        this.updateVisibility();
         this.latestTime = snapshot.currentTime
             + this.options.baseTimeOffsetSeconds
             + this.offsetSeconds;
@@ -150,6 +155,7 @@ export class AssRendererAdapter implements SubtitleRenderer {
     invalidate() {
         this.epoch++;
         this.lastRenderedTime = undefined;
+        this.updateVisibility();
         this.canvas.getContext('2d')?.clearRect(0, 0, this.canvas.width, this.canvas.height);
     }
 
@@ -203,7 +209,7 @@ export class AssRendererAdapter implements SubtitleRenderer {
             if (current) {
                 this.paint(event.data);
                 this.lastRenderedTime = pending.time;
-                this.host.style.visibility = 'visible';
+                this.updateVisibility();
                 this.activation?.resolve();
                 this.activation = undefined;
                 this.clearActivationTimeout();
@@ -213,6 +219,11 @@ export class AssRendererAdapter implements SubtitleRenderer {
             this.fail(error);
         }
     };
+
+    updateVisibility() {
+        this.host.style.visibility = this.videoFramePresented && this.lastRenderedTime !== undefined
+            && !this.failed && !this.disposed ? 'visible' : 'hidden';
+    }
 
     paint(frame: AssFrame) {
         const context = this.canvas.getContext('2d');
@@ -232,6 +243,7 @@ export class AssRendererAdapter implements SubtitleRenderer {
     fail(error: unknown) {
         if (this.disposed || this.failed) return;
         this.failed = true;
+        this.updateVisibility();
         this.clearFrameTimeout();
         this.clearActivationTimeout();
         if (this.activation) {
@@ -404,8 +416,9 @@ function prepareAssRenderer(
         try {
             if (settled) return;
             renderer = new SubtitlesOctopus({
-                canvas, subUrl: options.subtitleUrl, fonts,
+                canvas, ...(options.subtitleContent === undefined ? { subUrl: options.subtitleUrl } : { subContent: options.subtitleContent }), fonts,
                 workerUrl: options.workerUrl, legacyWorkerUrl: options.legacyWorkerUrl,
+                fallbackFont: options.fallbackFont,
                 // Octopus disposes its worker immediately after this callback.
                 // Recover in the next microtask to avoid disposing it twice.
                 onError: (error: unknown) => { void Promise.resolve().then(() => fail(error)); },

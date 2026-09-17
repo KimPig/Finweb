@@ -10,6 +10,7 @@ import { getBackdropShape, getPortraitShape } from 'components/cardbuilder/utils
 import globalize from 'lib/globalize';
 import ServerConnections from 'lib/jellyfin-apiclient/ServerConnections';
 import { queryClient } from 'utils/query/queryClient';
+import { getPendingHomePlaybackReports } from 'utils/query/pendingHomePlaybackReports';
 import type { UserSettings } from 'scripts/settings/userSettings';
 
 import type { SectionContainerElement, SectionOptions } from './section';
@@ -19,31 +20,36 @@ const dataMonitorHints: Record<string, string> = {
     Video: 'videoplayback,markplayed'
 };
 
-function getItemsToResumeFn(
+function getItemsToResumeQuery(
     apiClient: ApiClient,
     mediaType: MediaType,
     { enableOverflow }: SectionOptions
 ) {
-    return function () {
-        const api = ServerConnections.getApi(apiClient.serverId());
-        const limit = enableOverflow ? 12 : 5;
+    const api = ServerConnections.getApi(apiClient.serverId());
+    const limit = enableOverflow ? 12 : 5;
 
-        const options = {
-            userId: apiClient.getCurrentUserId(),
-            limit,
-            fields: [ ItemFields.PrimaryImageAspectRatio ],
-            imageTypeLimit: 1,
-            enableImageTypes: [
-                ImageType.Primary,
-                ImageType.Backdrop,
-                ImageType.Thumb
-            ],
-            enableTotalRecordCount: false,
-            mediaTypes: [ mediaType ]
-        };
+    const options = {
+        userId: apiClient.getCurrentUserId(),
+        limit,
+        fields: [ ItemFields.PrimaryImageAspectRatio ],
+        imageTypeLimit: 1,
+        enableImageTypes: [
+            ImageType.Primary,
+            ImageType.Backdrop,
+            ImageType.Thumb
+        ],
+        enableTotalRecordCount: false,
+        mediaTypes: [ mediaType ]
+    };
 
-        return queryClient
-            .fetchQuery(getResumeItemsQuery(api, options));
+    return getResumeItemsQuery(api, options);
+}
+
+function getItemsToResumeFn(apiClient: ApiClient, query: ReturnType<typeof getItemsToResumeQuery>) {
+    return async function () {
+        const pendingReport = getPendingHomePlaybackReports(apiClient.serverId(), apiClient.getCurrentUserId());
+        await pendingReport?.done;
+        return queryClient.fetchQuery(query);
     };
 }
 
@@ -107,7 +113,9 @@ export function loadResume(
 
     const itemsContainer: SectionContainerElement | null = elem.querySelector('.itemsContainer');
     if (!itemsContainer) return;
-    itemsContainer.fetchData = getItemsToResumeFn(apiClient, mediaType, options);
+    const query = getItemsToResumeQuery(apiClient, mediaType, options);
+    itemsContainer.setAttribute('data-home-playback-query', 'resume');
+    itemsContainer.fetchData = getItemsToResumeFn(apiClient, query);
     itemsContainer.getItemsHtml = getItemsToResumeHtmlFn(userSettings.useEpisodeImagesInNextUpAndResume(), mediaType, options);
     itemsContainer.parentContainer = elem;
 }

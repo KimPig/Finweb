@@ -54,8 +54,10 @@ $mui-bp-xl: 1536px;
     .finweb-layout,
     .finweb-drawer,
     .appfooter {
-        visibility: hidden !important;
+        // Hide the whole surface without animating inherited visibility on its buttons.
+        opacity: 0 !important;
         pointer-events: none !important;
+        transition: none !important;
     }
 }
 
@@ -75,8 +77,8 @@ body.finweb-modern-layout .appfooter {
     .MuiDrawer-paper {
         overflow: hidden;
         padding-bottom: 0 !important;
-        border-right: 0;
-        background: var(--secondary-background-color, var(--jf-palette-background-paper));
+        border-inline-end: 1px solid var(--finweb-line-subtle, #393939);
+        background: var(--finweb-sidebar-background, #161616);
     }
 
     .MuiDrawer-paper > [role="presentation"] {
@@ -111,7 +113,7 @@ body.finweb-modern-layout .appfooter {
 
     .sidebarHeader {
         margin: 18px 0 8px;
-        padding: 0 24px;
+        padding: 14px 24px 0;
         color: inherit;
         font-size: 14px;
         font-weight: 600;
@@ -122,13 +124,14 @@ body.finweb-modern-layout .appfooter {
         flex-grow: 0;
         align-items: center;
         box-sizing: border-box;
-        width: 85% !important;
+        width: calc(100% - 24px) !important;
         min-height: 45px;
         height: auto !important;
-        margin: 3px auto !important;
-        padding: 10px 16px !important;
+        margin: 2px 12px !important;
+        padding: 10px 13px !important;
         border: 0;
-        border-radius: 100px !important;
+        border-inline-start: 3px solid transparent;
+        border-radius: var(--rounded-cards, 0) !important;
         background: transparent;
         color: inherit;
         font: inherit;
@@ -136,7 +139,7 @@ body.finweb-modern-layout .appfooter {
         text-align: start !important;
         text-decoration: none;
         cursor: pointer;
-        transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease;
+        transition: background-color 120ms ease, color 120ms ease;
 
         &:hover {
             background: rgba(128, 128, 128, 0.15);
@@ -148,8 +151,9 @@ body.finweb-modern-layout .appfooter {
         }
 
         &.navMenuOption-selected {
-            background: var(--secondary-accent-color, var(--jf-palette-primary-main, #00a4dc)) !important;
-            color: var(--primary-accent-color, var(--jf-palette-primary-contrastText, #fff));
+            border-inline-start-color: var(--primary-accent-color, #4589ff);
+            background: var(--secondary-background-color, #262626) !important;
+            color: var(--finweb-text, #f4f4f4);
         }
     }
 

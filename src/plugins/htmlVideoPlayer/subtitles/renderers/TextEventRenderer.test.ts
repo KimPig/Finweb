@@ -10,6 +10,7 @@ import {
 const snapshot = (currentTime: number) => ({
     currentTime,
     paused: false,
+    videoFramePresented: true,
     playbackRate: 1,
     reason: 'frame' as const
 });

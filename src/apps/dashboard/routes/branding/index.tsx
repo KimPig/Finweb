@@ -11,7 +11,7 @@ import Stack from '@mui/material/Stack';
 import Switch from '@mui/material/Switch';
 import TextField from '@mui/material/TextField';
 import Typography from '@mui/material/Typography';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { type ActionFunctionArgs, Form, useActionData, useNavigation } from 'react-router-dom';
 
 import { getBrandingOptionsQuery, QUERY_KEY, useBrandingOptions } from 'apps/dashboard/features/branding/api/useBrandingOptions';
@@ -24,6 +24,7 @@ import globalize from 'lib/globalize';
 import { ServerConnections } from 'lib/jellyfin-apiclient';
 import { queryClient } from 'utils/query/queryClient';
 import { ActionData } from 'types/actionData';
+import { type CustomScriptSettings, parseCustomScriptUrls, readCustomScript, writeCustomScript } from 'utils/finweb/customScriptSettings';
 
 const BRANDING_CONFIG_KEY = 'branding';
 const BrandingOption = {
@@ -38,9 +39,19 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
     const formData = await request.formData();
     const data = Object.fromEntries(formData);
+    const script: CustomScriptSettings = {
+        enabled: data.FinwebCustomJsEnabled?.toString() === 'on',
+        code: data.FinwebCustomJs?.toString() || '',
+        mode: 'both',
+        url: data.FinwebCustomJsUrl?.toString().trim() || ''
+    };
+    const external = parseCustomScriptUrls(script.url);
+    if (script.enabled && external.invalidLine) {
+        return { isSaved: false, error: 'FinwebCustomJsInvalidUrl' };
+    }
 
     const brandingOptions: BrandingOptionsDto = {
-        CustomCss: data.CustomCss?.toString(),
+        CustomCss: writeCustomScript(data.CustomCss?.toString() || '', script),
         LoginDisclaimer: data.LoginDisclaimer?.toString(),
         SplashscreenEnabled: data.SplashscreenEnabled?.toString() === 'on'
     };
@@ -71,7 +82,7 @@ export const loader = async () => {
 export const Component = () => {
     const { api } = useApi();
     const navigation = useNavigation();
-    const actionData = useActionData() as ActionData | undefined;
+    const actionData = useActionData() as (ActionData & { error?: string }) | undefined;
     const isSubmitting = navigation.state === 'submitting';
 
     const {
@@ -80,11 +91,23 @@ export const Component = () => {
         isError
     } = useBrandingOptions();
     const [ brandingOptions, setBrandingOptions ] = useState(defaultBrandingOptions || {});
+    const [ customScript, setCustomScript ] = useState<CustomScriptSettings>(() => readCustomScript().script);
+    const [ invalidScriptSettings, setInvalidScriptSettings ] = useState(false);
+    const initializedServer = useRef<string>();
 
     const [ error, setError ] = useState<string>();
 
     const [ isSplashscreenEnabled, setIsSplashscreenEnabled ] = useState(brandingOptions.SplashscreenEnabled ?? false);
     const [ splashscreenUrl, setSplashscreenUrl ] = useState<string>();
+    useEffect(() => {
+        if (!api || !defaultBrandingOptions || initializedServer.current === api.basePath) return;
+        const parsed = readCustomScript(defaultBrandingOptions.CustomCss || '');
+        setBrandingOptions({ ...defaultBrandingOptions, CustomCss: parsed.css });
+        setCustomScript(parsed.script);
+        setInvalidScriptSettings(parsed.invalid);
+        setIsSplashscreenEnabled(defaultBrandingOptions.SplashscreenEnabled ?? false);
+        initializedServer.current = api.basePath;
+    }, [api, defaultBrandingOptions]);
     useEffect(() => {
         if (!api || isSubmitting) return;
 
@@ -177,6 +200,20 @@ export const Component = () => {
         setError(undefined);
     }, []);
 
+    const onScriptEnabledChange = useCallback((_: React.ChangeEvent<HTMLInputElement>, enabled: boolean) => {
+        setCustomScript(current => ({ ...current, enabled }));
+    }, []);
+
+    const onScriptChange = useCallback((event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const code = event.target.value;
+        setCustomScript(current => ({ ...current, code }));
+    }, []);
+
+    const onScriptUrlChange = useCallback((event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        const url = event.target.value;
+        setCustomScript(current => ({ ...current, url }));
+    }, []);
+
     if (isPending) return <Loading />;
 
     return (
@@ -204,9 +241,9 @@ export const Component = () => {
                                 </Alert>
                             )}
 
-                            {error && (
+                            {(error || actionData?.error) && (
                                 <Alert severity='error'>
-                                    {globalize.translate(error)}
+                                    {globalize.translate(error || actionData!.error!)}
                                 </Alert>
                             )}
 
@@ -282,7 +319,7 @@ export const Component = () => {
                                 name={BrandingOption.LoginDisclaimer}
                                 label={globalize.translate('LabelLoginDisclaimer')}
                                 helperText={globalize.translate('LabelLoginDisclaimerHelp')}
-                                value={brandingOptions?.LoginDisclaimer}
+                                value={brandingOptions?.LoginDisclaimer || ''}
                                 onChange={setBrandingOption}
                                 slotProps={{
                                     input: {
@@ -300,7 +337,7 @@ export const Component = () => {
                                 label={globalize.translate('LabelCustomCss')}
                                 helperText={globalize.translate('LabelCustomCssHelp')}
                                 spellCheck={false}
-                                value={brandingOptions?.CustomCss}
+                                value={brandingOptions?.CustomCss || ''}
                                 onChange={setBrandingOption}
                                 slotProps={{
                                     input: {
@@ -308,6 +345,55 @@ export const Component = () => {
                                     }
                                 }}
                             />
+
+                            <FormControlLabel
+                                control={(
+                                    <Switch
+                                        name='FinwebCustomJsEnabled'
+                                        checked={customScript.enabled}
+                                        onChange={onScriptEnabledChange}
+                                    />
+                                )}
+                                label={globalize.translate('FinwebCustomJsEnabled')}
+                            />
+                            {customScript.enabled ? <TextField
+                                fullWidth
+                                multiline
+                                minRows={6}
+                                maxRows={24}
+                                name='FinwebCustomJs'
+                                label={globalize.translate('FinwebCustomJs')}
+                                value={customScript.code}
+                                spellCheck={false}
+                                onChange={onScriptChange}
+                                slotProps={{ input: { className: 'textarea-mono' } }}
+                            /> : <input type='hidden' name='FinwebCustomJs' value={customScript.code} />}
+                            {customScript.enabled ? <TextField
+                                fullWidth
+                                multiline
+                                minRows={3}
+                                maxRows={12}
+                                name='FinwebCustomJsUrl'
+                                label={globalize.translate('FinwebCustomJsUrl')}
+                                helperText={globalize.translate('FinwebCustomJsUrlHelp')}
+                                value={customScript.url}
+                                onChange={onScriptUrlChange}
+                                spellCheck={false}
+                                slotProps={{ input: { className: 'textarea-mono' } }}
+                            /> : <input type='hidden' name='FinwebCustomJsUrl' value={customScript.url} />}
+                            {customScript.enabled && <Alert severity='warning'>
+                                {globalize.translate('FinwebCustomJsWarning')}
+                            </Alert>}
+                            {customScript.enabled && <Typography variant='body2' sx={{ overflowWrap: 'anywhere' }}>
+                                {globalize.translate('FinwebCustomJsRecovery')}
+                                {' '}
+                                <a href={`${window.location.pathname}?finwebSafeMode=1#/dashboard/branding`}>
+                                    {globalize.translate('FinwebEnterSafeMode')}
+                                </a>
+                            </Typography>}
+                            {invalidScriptSettings && (
+                                <Alert severity='error'>{globalize.translate('FinwebCustomJsInvalid')}</Alert>
+                            )}
 
                             <Button
                                 type='submit'

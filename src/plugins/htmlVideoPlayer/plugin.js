@@ -7,6 +7,7 @@ import { PluginType } from 'constants/pluginType';
 import { ServerConnections } from 'lib/jellyfin-apiclient';
 import { FinwebPlaybackSession } from './FinwebPlaybackSession';
 import toast from '../../components/toast/toast';
+import { isSubtitlePrefetchNoticeEnabled } from './subtitles/diagnostics';
 import { normalizeTrackEventText } from './subtitles/renderers/TextEventRenderer';
 import { currentSettings as userSettings } from 'scripts/settings/userSettings';
 import { MediaError } from 'types/mediaError';
@@ -1260,6 +1261,10 @@ export class HtmlVideoPlayer {
             this.#textSubtitlePipeline?.dispose();
             this.#textSubtitlePipeline = new FinwebPlaybackSession({
                 videoElement,
+                onBackgroundSubtitlesReady: () => {
+                    if (playbackGeneration !== this.#subtitlePlaybackGeneration || !isSubtitlePrefetchNoticeEnabled()) return;
+                    toast(globalize.translate('FinwebBackgroundSubtitlesReady'));
+                },
                 onStateChange: ({ slot, trackIndex, state, error, restoredTrackIndex }) => {
                     if (playbackGeneration !== this.#subtitlePlaybackGeneration) return;
                     this.logPlaybackDiagnostic(`subtitle-${state}`, videoElement, {

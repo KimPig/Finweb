@@ -13,6 +13,7 @@ import loading from 'components/loading/loading';
 import { pluginManager } from './components/pluginManager';
 import { appRouter } from './components/router/appRouter';
 import { AppFeature } from 'constants/appFeature';
+import { EventType } from 'constants/eventType';
 import globalize from './lib/globalize';
 import { loadCoreDictionary } from 'lib/globalize/loader';
 import getServerAddress from 'lib/jellyfin-apiclient/utils/getServerAddress';
@@ -23,6 +24,7 @@ import { getPlugins } from './scripts/settings/webSettings';
 import taskButton from './scripts/taskbutton';
 import { pageClassOn, serverAddress } from './utils/dashboard';
 import Events from './utils/events';
+import { updateApiClientSdk } from 'utils/jellyfin-apiclient/compat';
 import { initializeServerConnections } from './scripts/serverNotifications';
 
 import RootApp from './RootApp';
@@ -46,6 +48,7 @@ import './styles/livetv.scss';
 import './styles/dashboard.scss';
 import './styles/detailtable.scss';
 import './styles/librarybrowser.scss';
+import './styles/finweb.scss';
 
 async function init() {
     // Log current version to console to help out with issue triage and debugging
@@ -89,6 +92,14 @@ build: ${__JF_BUILD_VERSION__}`);
     // Update localization on user changes
     Events.on(ServerConnections, 'localusersignedin', globalize.updateCurrentCulture);
     Events.on(ServerConnections, 'localusersignedout', globalize.updateCurrentCulture);
+    // Update sdk language on language changes
+    Events.on(document, EventType.LANGUAGE_CHANGE, () => {
+        ServerConnections.getCurrentApiClientAsync()
+            .then(updateApiClientSdk)
+            .catch(err => {
+                console.error('Failed to update ApiClient SDK on language change', err);
+            });
+    });
 
     // Load the font styles
     loadFonts();

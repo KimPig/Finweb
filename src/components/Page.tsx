@@ -13,6 +13,7 @@ type CustomPageProps = {
     isNowPlayingBarEnabled?: boolean,
     isThemeMediaSupported?: boolean,
     shouldAutoFocus?: boolean,
+    isActive?: boolean,
     backDropType?: BaseItemKind[]
 };
 
@@ -32,16 +33,19 @@ const Page: FC<PropsWithChildren<PageProps>> = ({
     isNowPlayingBarEnabled = true,
     isThemeMediaSupported = false,
     shouldAutoFocus = false,
+    isActive = true,
     backDropType
 }) => {
     const element = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
+        if (!isActive) return;
         // hide active non-react views
         viewManager.hideView();
-    }, []);
+    }, [isActive]);
 
     useEffect(() => {
+        if (!isActive) return;
         const event = {
             bubbles: true,
             cancelable: false,
@@ -61,13 +65,13 @@ const Page: FC<PropsWithChildren<PageProps>> = ({
         element.current?.dispatchEvent(new CustomEvent('viewshow', event));
         // pageshow - updates header/navigation in libraryMenu
         element.current?.dispatchEvent(new CustomEvent('pageshow', event));
-    }, [ element, isNowPlayingBarEnabled, isThemeMediaSupported ]);
+    }, [ element, isNowPlayingBarEnabled, isThemeMediaSupported, isActive ]);
 
     useEffect(() => {
-        if (shouldAutoFocus) {
+        if (shouldAutoFocus && isActive) {
             autoFocuser.autoFocus(element.current);
         }
-    }, [ shouldAutoFocus ]);
+    }, [ shouldAutoFocus, isActive ]);
 
     return (
         <StrictMode>

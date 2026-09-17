@@ -66,6 +66,10 @@ import { createAssRendererAdapter } from './src/plugins/htmlVideoPlayer/subtitle
 import { TextSubtitlePipeline } from './src/plugins/htmlVideoPlayer/subtitles/TextSubtitlePipeline';
 import { TextEventRenderer } from './src/plugins/htmlVideoPlayer/subtitles/renderers/TextEventRenderer';
 const video = document.querySelector('video');
+if (new URLSearchParams(location.search).has('noFrameCallbacks')) {
+    video.requestVideoFrameCallback = undefined;
+    video.cancelVideoFrameCallback = undefined;
+}
 const view = video.parentElement;
 const currentPlayer = video;
 let speedHoldSource, speedHoldPointerType, speedHoldPointerId, speedHoldPlayer;
@@ -111,6 +115,23 @@ window.fixture = {
     video, changes, reset,
     select: (slow = false, legacy = false, badFont = false, slot = 0) =>
         pipeline.select(slot, 2, request => factory(request, slow, legacy, badFont)),
+    prepared: async () => {
+        const [content, font] = await Promise.all([
+            fetch('/subtitle.ass').then(response => response.text()),
+            fetch('/font.woff2').then(response => response.arrayBuffer())
+        ]);
+        const fontUrl = URL.createObjectURL(new Blob([font], { type: 'application/octet-stream' }));
+        try {
+            return await pipeline.select(0, 2, request => createAssRendererAdapter({
+                videoElement: video, subtitleContent: content, fonts: [fontUrl],
+                workerUrl: location.origin + '/lib/subtitles-octopus-worker.js',
+                legacyWorkerUrl: location.origin + '/lib/subtitles-octopus-worker-legacy.js',
+                baseTimeOffsetSeconds: 0, targetFps: 24, request
+            }));
+        } finally {
+            URL.revokeObjectURL(fontUrl);
+        }
+    },
     text: () => pipeline.select(0, 1, async () => new TextEventRenderer({
         parentElement: video.parentElement, slot: 0,
         trackEvents: [{ StartPositionTicks: 0, EndPositionTicks: 600000000, Text: 'SRT fixture' }],
@@ -168,7 +189,10 @@ const server = createServer(async (req, res) => {
         res.setHeader('Cache-Control', 'no-store');
         if (url.pathname === '/') {
             res.setHeader('Content-Type', 'text/html');
-            res.end('<!doctype html><link rel="stylesheet" href="/test.css"><div style="position:relative;width:640px;height:360px"><video muted playsinline src="/fixture.mp4" style="width:100%;height:100%"></video></div><script src="/test.js"></script>');
+            res.end('<!doctype html><link rel="stylesheet" href="/test.css"><div style="position:relative;width:640px;height:360px"><video muted playsinline poster="/poster.svg" src="/fixture.mp4" style="width:100%;height:100%"></video></div><script src="/test.js"></script>');
+        } else if (url.pathname === '/poster.svg') {
+            res.setHeader('Content-Type', 'image/svg+xml');
+            res.end('<svg xmlns="http://www.w3.org/2000/svg" width="640" height="360"><rect width="640" height="360" fill="#246"/></svg>');
         } else if (url.pathname === '/test.css') {
             res.setHeader('Content-Type', 'text/css');
             res.end(osdCss + '\n.material-icons.fast_forward::before { content: "\\e057"; }');
@@ -201,6 +225,37 @@ try {
     const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
+    for (const fallback of [false, true]) {
+        await page.goto(`http://127.0.0.1:${server.address().port}/${fallback ? '?noFrameCallbacks=1' : ''}`);
+        await page.waitForFunction(() => window.fixture?.video.readyState >= 2);
+        await page.evaluate(() => window.fixture.select());
+        assert.ok(await page.evaluate(() => window.fixture.pixels()) > 0, 'ASS is prepared without waiting for video playback');
+        await page.waitForTimeout(250);
+        assert.equal(await page.locator('.subtitle-pipeline-ass').evaluate(el => getComputedStyle(el).visibility), 'hidden', 'Prepared ASS must not cover the poster');
+        await page.evaluate(() => window.fixture.video.play());
+        await page.waitForFunction(() => getComputedStyle(document.querySelector('.subtitle-pipeline-ass')).visibility === 'visible');
+        await page.evaluate(() => window.fixture.video.pause());
+        await page.evaluate(() => window.fixture.text());
+        await page.evaluate(() => window.fixture.select());
+        assert.equal(await page.locator('.subtitle-pipeline-ass').evaluate(el => getComputedStyle(el).visibility), 'visible', 'Paused SRT to ASS retains first-frame state');
+        await page.evaluate(() => window.fixture.reset());
+        await page.evaluate(() => window.fixture.select());
+        assert.equal(await page.locator('.subtitle-pipeline-ass').evaluate(el => getComputedStyle(el).visibility), 'visible', 'A replacement pipeline recognizes a played, paused video');
+        await page.evaluate(() => {
+            window.fixture.video.src = '/fixture.mp4?next';
+        });
+        await page.waitForFunction(() => window.fixture.video.readyState >= 2 && window.fixture.video.currentTime === 0);
+        await page.waitForTimeout(250);
+        assert.equal(await page.locator('.subtitle-pipeline-ass').evaluate(el => getComputedStyle(el).visibility), 'hidden', 'A new source hides subtitles behind its poster again');
+        await page.evaluate(() => {
+            window.fixture.video.currentTime = 8;
+        });
+        await page.waitForFunction(() => !window.fixture.video.seeking && window.fixture.pixels() > 0);
+        assert.equal(await page.locator('.subtitle-pipeline-ass').evaluate(el => getComputedStyle(el).visibility), 'hidden', 'Preparing a resume position does not reveal subtitles before playback');
+        await page.evaluate(() => window.fixture.video.play());
+        await page.waitForFunction(() => getComputedStyle(document.querySelector('.subtitle-pipeline-ass')).visibility === 'visible');
+        console.log(`PASS: prepared ASS stays behind poster, first-frame reveal, paused switching and source reset (${fallback ? 'playing fallback' : 'video-frame callback'})`);
+    }
     for (const legacy of [false, true]) {
         for (const releaseEarly of [false, true]) {
             await page.goto(`http://127.0.0.1:${server.address().port}`);
@@ -379,6 +434,18 @@ try {
     await page.evaluate(() => window.fixture.select(false, true));
     assert.ok(await page.evaluate(() => window.fixture.pixels()) > 0, 'legacy worker must also render');
     console.log('PASS: legacy libass worker');
+
+    await page.goto(`http://127.0.0.1:${server.address().port}`);
+    await page.waitForFunction(() => window.fixture?.video.readyState >= 2);
+    await page.evaluate(() => window.fixture.video.play());
+    const preparedRequestsBefore = requests.length;
+    await page.evaluate(() => window.fixture.prepared());
+    assert.equal(await page.evaluate(() => window.fixture.active()), 2);
+    assert.ok(await page.evaluate(() => window.fixture.pixels()) > 0, 'prepared ASS text and Blob font must render');
+    assert.equal(requests.slice(preparedRequestsBefore).filter(url => url === '/subtitle.ass').length, 1);
+    await page.evaluate(() => window.fixture.clear());
+    assert.equal(await page.locator('.subtitle-pipeline-ass').count(), 0);
+    console.log('PASS: prepared ASS text and Blob-backed font render through libass-wasm');
 
     assert.deepEqual(errors, []);
     assert.ok(requests.includes('/slow.ass') && requests.includes('/slow-font.woff2'));

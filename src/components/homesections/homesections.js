@@ -138,6 +138,11 @@ export function resume(elem, options) {
     return Promise.all(promises);
 }
 
+export function refreshPlaybackSections(elem) {
+    const elems = elem.querySelectorAll('.itemsContainer[data-home-playback-query]');
+    return Promise.all(Array.from(elems, section => section.refreshItems()));
+}
+
 function loadSection(page, apiClient, user, userSettings, userViews, section, index) {
     const elem = page.querySelector('.section' + index);
     const options = { enableOverflow: enableScrollX() };
@@ -185,5 +190,6 @@ export default {
     loadSections,
     destroySections,
     pause,
-    resume
+    resume,
+    refreshPlaybackSections
 };

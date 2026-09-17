@@ -1,12 +1,25 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { SubtitleDiagnosticTrace, subtitleDiagnostics, type SubtitleDiagnosticDetails } from './diagnostics';
+import { isSubtitlePrefetchNoticeEnabled, SubtitleDiagnosticTrace, subtitleDiagnostics, type SubtitleDiagnosticDetails } from './diagnostics';
 
 afterEach(() => {
     subtitleDiagnostics.stop();
+    window.history.replaceState(null, '', '/');
     vi.restoreAllMocks();
 });
 
 describe('subtitle timing diagnostics', () => {
+    it.each(['/', '/?subtitleDiagnostics=1', '/?subtitlePrefetchNotice=0'])('keeps the prefetch notice off at %s', url => {
+        window.history.replaceState(null, '', url);
+        expect(isSubtitlePrefetchNoticeEnabled()).toBe(false);
+    });
+
+    it('requires a separate explicit opt-in for the prefetch notice', () => {
+        window.history.replaceState(null, '', '/?subtitleDiagnostics=1&subtitlePrefetchNotice=1');
+        expect(isSubtitlePrefetchNoticeEnabled()).toBe(true);
+        window.history.replaceState(null, '', '/');
+        expect(isSubtitlePrefetchNoticeEnabled()).toBe(false);
+    });
+
     it('does not record until explicitly enabled', () => {
         subtitleDiagnostics.start();
         subtitleDiagnostics.stop();

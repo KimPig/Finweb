@@ -1,133 +1,154 @@
-# Contributing to Jellyfin Web
+# Contributing to Finweb
 
-Thanks for taking the time to contribute! :purple_heart:
-Jellyfin is an entirely volunteer-driven project, so without contributors like you it could not exist!
+Finweb is maintained separately from Jellyfin Web. File Finweb-specific issues
+and changes in [KimPig/Finweb](https://github.com/KimPig/Finweb), not the official
+Jellyfin repository. Contributions intended for upstream must follow that
+project's own contribution rules.
 
-Below are some general guidelines and information about this project.
-If you have any questions, please join one of our [development chat rooms](https://jellyfin.org/contact) to discuss them!
+## Development
 
-## Contributor Guidelines
+Use Node from [.nvmrc](.nvmrc), npm and the repository lockfile:
 
-### New Code
+```sh
+npm ci
+npm test
+npm run build:check
+npm run lint
+npm run stylelint
+npm run build:production
+npm run escheck
+```
 
-* New files **MUST** be written in TypeScript.
-* API interactions **MUST** be made using the Jellyfin TypeScript SDK.
-* New app pages **MUST** be written using React components using `src/components/Page.tsx` as the base component.
-* **SHOULD** be covered by unit tests when possible (legacy component/view code is deemed untestable).
-* **SHOULD** avoid whitespace only changes in unchanged sections of code.
-* **SHOULD NOT** overuse dynamic imports. We use dynamic imports at the page level; otherwise we should let our build tooling deal with code-splitting for the best bundle sizes.
-* **SHOULD NOT** reference browser globals. Globals exist for plugins/legacy compatibility. Use direct imports for any dependencies instead.
-* You **MAY** add your GitHub username to the list of contributors in [CONTRIBUTORS.md](./CONTRIBUTORS.md).
+The production build writes `dist/`; the final command checks the generated
+JavaScript. Building the app is not the same as testing authenticated playback.
+See [README.md](README.md) for a visible, static preview server.
 
-### Localization
+Keep changes focused and preserve unrelated local work. Use TypeScript for new
+application modules and React for new app pages. Prefer the Jellyfin SDK for new
+API integrations and preserve legacy/native-wrapper contracts when changing
+existing paths. Add regression tests for behavior changes, including cancellation,
+slow responses and failures when relevant.
 
-* Translation changes or additions **MUST** be made via the [Jellyfin Weblate instance](https://translate.jellyfin.org/) except for the source language (`en-us`).
-* Existing translation keys **SHOULD NOT** be renamed without a significant reason. Weblate cannot track key name changes so a key name change requires retranslation in ALL languages.
+Finweb-specific translation keys belong in `src/strings/`; keep the English
+source and affected local translations consistent. Do not send Finweb-only strings
+to upstream's translation service. Preserve inherited contributor and license notices.
 
-### Pull Requests
+## Source Map
 
-* **MUST** follow [project guidelines](https://jellyfin.org/docs/general/contributing/development#pull-request-guidelines).
-  * **SHOULD NOT** use "Conventional Commits" for titles or commit messages.
-  * **SHOULD NOT** rebase once reviews are in progress.
-* **MUST** follow the [LLM development policy](https://jellyfin.org/docs/general/contributing/llm-policies).
-* **MUST** test that the change works as expected before marking a PR as ready for review.
-* **MUST** fully complete the PR template. Failing to do so will result in the PR being closed as invalid without review.
-* **SHOULD** represent a singular focus (i.e. a PR to fix a bug should not include unrelated refactoring).
-* **SHOULD NOT** update from `master` needlessly once opened (only update if conflicts exist).
-
-#### Targeting a Release Branch
-
-You may be asked to update your Pull Request to target a release branch as part of our patch / bug-fix release process. Follow these steps to properly update your PR.
-
-1. `git rebase --onto release-X.Y.Z master` (Fetch the release branch if it does not exist in your local copy and replace `release-X.Y.Z` with the latest release branch.)
-2. Force push your branch.
-3. Update the target branch on Github by clicking "Edit" -> Change base branch to point to the release branch.
-
-## Application Architecture
-
-### Tech Stack
-
-* [Bulletproof React based structure](https://forum.jellyfin.org/t-proposed-update-to-the-structure-of-jellyfin-web) ([official reference](https://github.com/alan2207/bulletproof-react/blob/master/README.md)) &mdash; General file structure
-* [TypeScript](https://www.typescriptlang.org/docs/handbook/intro.html) &mdash; Programming language
-* [Jellyfin TypeScript SDK](https://typescript-sdk.jellyfin.org/) &mdash; Jellyfin API library
-* [React](https://react.dev/reference/react) &mdash; User Interface library
-* [React Router](https://reactrouter.com/) &mdash; Routing library
-* [TanStack Query](https://tanstack.com/query/latest/docs/framework/react/overview) &mdash; State management library for server data
-* [MUI](https://mui.com/material-ui/getting-started/) components (in Dashboard and Modern layouts) &mdash; UI component library
-* [Webpack](https://webpack.js.org/concepts/) &mdash; Bundler / build tooling
-* [Vitest](https://vitest.dev/api/) &mdash; Test library
-
-#### Legacy Stack
-
-| Library | Replacement |
+| Area | Location |
 | --- | --- |
-| [Emby WebComponents](./src/elements) | MUI components (Dashboard + Modern apps ONLY; Untested on TVs) |
-| [App Router](./src/components/router/appRouter.js) | React Router |
-| [View Manager](./src/components/viewManager) | React Router |
-| [Jellyfin ApiClient](https://github.com/jellyfin-archive/jellyfin-apiclient-javascript) | Jellyfin TypeScript SDK |
-| [jQuery](https://api.jquery.com/) | None (use plain JavaScript/TypeScript) |
+| Modern routes, desktop layout, retained Home | `src/apps/modern/` |
+| Legacy OSD and playback view | `src/apps/legacy/controllers/playback/video/` |
+| Admin settings and branding | `src/apps/dashboard/` |
+| Playback reports and host integration | `src/components/playback/` |
+| Video player, sessions and subtitle pipeline | `src/plugins/htmlVideoPlayer/` |
+| Shared subtitle/Trickplay/preview helpers | `src/plugins/finwebPlayer/` |
+| Built-in theme | `src/styles/finweb.scss`, `src/themes/` |
+| JS settings, loader and theme scope | `src/utils/finweb/` |
+| Browser integration fixtures | `scripts/test-*.mjs` |
+| Home regression tests | `src/tests/home/` |
 
-#### Supported Browsers
+Client `src/plugins/` modules are not Jellyfin Server plugins. The
+`finwebPlayer` directory contains shared helpers, not an alternative player UI.
 
-This codebase supports a wide variety of platforms including TVs that are stuck on ancient versions of browser engines.
-As a result, we can only use JavaScript and CSS features that are either directly supported by these browser versions or can be otherwise compiled or polyfilled for compatibility.
-The official list of supported browser versions can be found in the `browserlist` section of the [package.json file](./package.json).
+## Browser Checks
 
-## Application Components
+Browser scripts need Playwright and an installed Chromium binary. If Playwright
+is supplied outside this repository, set `PLAYWRIGHT_MODULE` to the absolute path
+of its importable entry point, such as `playwright/index.mjs`. Do not commit
+machine-specific runtime paths. Playback/video fixtures also require `ffmpeg`
+on PATH.
 
-* Modern App `src/apps/modern`
-  * Ongoing rewrite of the main user interface using MUI components
-  * Currently reuses content from the Legacy App to maintain parity
-  * Does not currently support TV layout!
-* Legacy App `src/apps/legacy`
-  * Main user application
-  * Supports TV layout
-* Dashboard App `src/apps/dashboard`
-  * Admin dashboard and metadata editor pages
-  * Almost completely rewritten using MUI components
-  * No TV support (dashboard pages are not available)
-* Wizard App `src/apps/wizard`
-  * First time setup wizard
-* Plugins `src/plugins`
-  * This is a terrible name as it has nothing to do with server plugins
-  * Modular functionality that is loaded dynamically at runtime
-  * ALL media player implementations are plugins
-  * Allows native wrapper overrides
+Run the checks relevant to the change:
 
-## Directory Structure
-
-> [!NOTE]
-> We are in the process of refactoring to a [new structure](https://forum.jellyfin.org/t-proposed-update-to-the-structure-of-jellyfin-web) based on [Bulletproof React](https://github.com/alan2207/bulletproof-react/blob/master/docs/project-structure.md) architecture guidelines.
-> Most new code should be organized under the appropriate app directory unless it is common/shared.
-
-```
-.
-└── src
-    ├── apps
-    │   ├── dashboard           # Admin dashboard app
-    │   ├── legacy              # Legacy app
-    │   ├── modern              # New modern (React based) app
-    │   └── wizard              # Startup wizard app
-    ├── assets                  # Static assets
-    ├── components              # Higher order visual components and React components
-    ├── constants               # Common constant values
-    ├── elements                # Basic webcomponents and React equivalents 🧹
-    ├── hooks                   # Custom React hooks
-    ├── lib                     # Reusable libraries
-    │   ├── globalize           # Custom localization library
-    │   ├── jellyfin-apiclient  # Supporting code for the deprecated apiclient package
-    │   ├── legacy              # Polyfills for legacy browsers
-    │   ├── navdrawer           # Navigation drawer library for classic layout
-    │   └── scroller            # Content scrolling library
-    ├── plugins                 # Client plugins (features dynamically loaded at runtime)
-    ├── scripts                 # Random assortment of visual components and utilities 🐉 ❌
-    ├── strings                 # Translation files (only commit changes to en-us.json)
-    ├── styles                  # Common app Sass stylesheets
-    ├── themes                  # Sass and MUI themes
-    ├── types                   # Common TypeScript interfaces/types
-    └── utils                   # Utility functions
+```sh
+node scripts/test-finweb-identity.mjs
+node scripts/test-finweb-layout.mjs
+node scripts/test-finweb-theme.mjs
+node scripts/test-login-background.mjs
+node scripts/test-finweb-slider.mjs
+node scripts/test-finweb-seek-preview.mjs
+node scripts/test-ass-browser.mjs
+npm run test:playback
+node scripts/test-finweb-preview.mjs
 ```
 
-* ❌ &mdash; Deprecated, do **not** create new files here
-* 🧹 &mdash; Needs cleanup
-* 🐉 &mdash; Serious mess (Here be dragons)
+The built-preview test expects a running server at `http://127.0.0.1:8097`, or
+the address in `FINWEB_PREVIEW_URL`. Build first and keep its serving terminal open.
+Set `FINWEB_PRODUCTION_ENGINE=1` for the playback fixture to use the built libass
+Worker/WASM files in `dist/libraries/`.
+
+Tests use isolated fixtures, DOM measurements and canvas-pixel checks. Do not
+take screenshots or inspect a user's authenticated browser without an appropriate
+request. Real-server and device checks are separate from fixture results.
+
+## Upstream Changes
+
+Consult [UPSTREAM.md](UPSTREAM.md) before updating the baseline. This snapshot
+repository does not share upstream Git ancestry; an upstream remote does not
+make a blind merge appropriate. Adapt the chosen upstream delta and recheck the
+Finweb-specific UI, subtitle, server-reporting and native-host paths.
+
+Keep `origin` pointed at the Finweb repository. Never publish Finweb's custom
+work to the official Jellyfin repository as part of a Finweb release.
+
+## Distribution Checklist
+
+Regular workflows build and check code and upload a `finweb-dist` Actions artifact.
+Markdown-only pushes are excluded by the branch push workflow.
+The separate [release workflow](.github/workflows/release.yml) runs when a stable
+version tag such as `v12.1.0` is pushed, and only in `KimPig/Finweb`.
+
+Before installing dependencies, it checks the tag against `package.json`'s
+`version`, `finwebVersion`, `jellyfinWebVersion` prefix and root lockfile metadata.
+It then runs type checks, unit tests, a production build and ES compatibility checks.
+The publication job runs only after these steps succeed; the build job itself has
+no release write permission.
+
+Release files are `finweb-VERSION.zip`, `finweb-VERSION.tar.gz` and `SHA256SUMS.txt`.
+Both archives contain the frontend files at their root, plus `LICENSE`; neither
+contains the repository, dependencies, local notes or Jellyfin Server. Release
+notes link to the exact source commit. The artifact is kept for 14 days for job
+retries. Files are uploaded to a draft before it becomes public. A retry may
+replace draft assets but refuses to overwrite an already published version.
+
+No personal access token is required: publication uses the workflow's GitHub token
+with `contents: write` and artifact-read access. Repository or organization Actions
+policies must allow those permissions. GitHub-hosted runners provide the archive
+tools and GitHub CLI used by the workflow.
+
+Before publishing a build:
+
+1. Review the intended diff and confirm the remote and target branch. Do not
+   include local handoffs, backups, credentials, personal CSS/JS or diagnostic logs.
+2. Run relevant checks and build the exact source revision to be distributed.
+   Review results rather than relying on a previous test count.
+3. Keep Finweb's version and official Web baseline distinct. The current
+   development version remains `12.1.0`; do not bump it implicitly.
+4. Record the tested source revision, upstream baseline and known limitations.
+5. Commit the intended source and workflow to the existing working branch, and
+   push that branch to `origin`. Only then create/push the matching version tag.
+   Never reuse a published tag for different files or silently force-move it.
+
+For the current version, after the intended commit is pushed:
+
+```sh
+node --test scripts/test-release-version.mjs
+node scripts/validate-release.mjs v12.1.0
+git tag -a v12.1.0 -m "Finweb 12.1.0"
+git push origin v12.1.0
+```
+
+These tag commands publish a release through Actions; do not run them just to
+test the workflow. For a later revision, update the product/lockfile versions and
+use its matching tag. The validator currently accepts stable `vX.Y.Z` tags only,
+not prerelease suffixes. Watch **Finweb Release** in Actions and confirm the assets
+in Releases before announcing completion. Configuration or local validation alone
+does not verify a successful GitHub-hosted run.
+
+The publication sequence uses the official [GitHub CLI release commands](https://cli.github.com/manual/gh_release_create).
+
+Public documentation is README, CONFIGURATION, CHANGE_PLAN, PLAYBACK,
+CONTRIBUTING and UPSTREAM. `LICENSE` and `CONTRIBUTORS.md` preserve upstream
+notices. Root `*.local.md` files, `.local-backup/`, exported subtitle diagnostics,
+`dist/` and `node_modules/` stay out of Git.

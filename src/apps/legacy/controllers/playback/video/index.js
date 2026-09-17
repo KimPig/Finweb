@@ -1,5 +1,3 @@
-import escapeHtml from 'escape-html';
-
 import { PlayerEvent } from 'apps/legacy/features/playback/constants/playerEvent';
 import { AppFeature } from 'constants/appFeature';
 import { PluginType } from 'constants/pluginType';
@@ -7,6 +5,8 @@ import { TICKS_PER_MINUTE, TICKS_PER_SECOND } from 'constants/time';
 import { EventType } from 'constants/eventType';
 
 import { playbackManager } from 'components/playback/playbackmanager';
+import { getTrickplayTile } from 'plugins/finwebPlayer/trickplay';
+import SeekPreview from 'plugins/finwebPlayer/SeekPreview';
 import browser from 'scripts/browser';
 import dom from 'utils/dom';
 import inputManager from 'scripts/inputManager';
@@ -39,6 +39,7 @@ function getOpenedDialog() {
 }
 
 export default function (view) {
+    const seekPreview = new SeekPreview();
     function getDisplayItem(item) {
         if (item.Type === 'TvChannel') {
             const apiClient = ServerConnections.getApiClient(item.ServerId);
@@ -1618,44 +1619,8 @@ export default function (view) {
     }
 
     function updateTrickplayBubbleHtml(apiClient, trickplayInfo, item, mediaSourceId, bubble, positionTicks) {
-        let doFullUpdate = false;
-        let chapterThumbContainer = bubble.querySelector('.chapterThumbContainer');
-        let chapterThumb;
-        let chapterThumbText;
-        let chapterThumbName;
-
-        // Create bubble elements if they don't already exist
-        if (chapterThumbContainer) {
-            chapterThumb = chapterThumbContainer.querySelector('.chapterThumbWrapper');
-            chapterThumbText = chapterThumbContainer.querySelector('h2.chapterThumbText');
-            chapterThumbName = chapterThumbContainer.querySelector('div.chapterThumbText');
-        } else {
-            doFullUpdate = true;
-
-            chapterThumbContainer = document.createElement('div');
-            chapterThumbContainer.classList.add('chapterThumbContainer');
-            chapterThumbContainer.style.overflow = 'hidden';
-
-            chapterThumb = document.createElement('div');
-            chapterThumb.classList.add('chapterThumbWrapper');
-            chapterThumb.style.overflow = 'hidden';
-            chapterThumb.style.width = trickplayInfo.Width + 'px';
-            chapterThumb.style.height = trickplayInfo.Height + 'px';
-            chapterThumbContainer.appendChild(chapterThumb);
-
-            const chapterThumbTextContainer = document.createElement('div');
-            chapterThumbTextContainer.classList.add('chapterThumbTextContainer');
-            chapterThumbContainer.appendChild(chapterThumbTextContainer);
-
-            chapterThumbName = document.createElement('div');
-            chapterThumbName.classList.add('chapterThumbText', 'chapterThumbText-dim');
-            chapterThumbTextContainer.appendChild(chapterThumbName);
-
-            chapterThumbText = document.createElement('h2');
-            chapterThumbText.classList.add('chapterThumbText');
-            chapterThumbTextContainer.appendChild(chapterThumbText);
-        }
-
+        const tile = getTrickplayTile(apiClient, trickplayInfo, item.Id, mediaSourceId, positionTicks);
+        if (!tile) return false;
         let chapter;
         for (const currentChapter of item.Chapters || []) {
             if (positionTicks < currentChapter.StartPositionTicks) {
@@ -1665,35 +1630,10 @@ export default function (view) {
             chapter = currentChapter;
         }
 
-        // Update trickplay values
-        const currentTimeMs = positionTicks / 10_000;
-        const currentTile = Math.floor(currentTimeMs / trickplayInfo.Interval);
-
-        const tileSize = trickplayInfo.TileWidth * trickplayInfo.TileHeight;
-        const tileOffset = currentTile % tileSize;
-        const index = Math.floor(currentTile / tileSize);
-
-        const tileOffsetX = tileOffset % trickplayInfo.TileWidth;
-        const tileOffsetY = Math.floor(tileOffset / trickplayInfo.TileWidth);
-        const offsetX = -(tileOffsetX * trickplayInfo.Width);
-        const offsetY = -(tileOffsetY * trickplayInfo.Height);
-
-        const imgSrc = apiClient.getUrl('Videos/' + item.Id + '/Trickplay/' + trickplayInfo.Width + '/' + index + '.jpg', {
-            ApiKey: apiClient.accessToken(),
-            MediaSourceId: mediaSourceId
+        seekPreview.update(bubble, datetime.getDisplayRunningTime(positionTicks), chapter?.Name || '', {
+            url: tile.url,
+            tile: { width: trickplayInfo.Width, height: trickplayInfo.Height, x: tile.x, y: tile.y }
         });
-
-        chapterThumb.style.backgroundImage = `url('${imgSrc}')`;
-        chapterThumb.style.backgroundPositionX = offsetX + 'px';
-        chapterThumb.style.backgroundPositionY = offsetY + 'px';
-
-        chapterThumbText.textContent = datetime.getDisplayRunningTime(positionTicks);
-        chapterThumbName.textContent = chapter?.Name || '';
-
-        // Set bubble innerHTML if container isn't part of DOM
-        if (doFullUpdate) {
-            bubble.innerHTML = chapterThumbContainer.outerHTML;
-        }
 
         return true;
     }
@@ -1713,7 +1653,7 @@ export default function (view) {
         return null;
     }
 
-    function getChapterBubbleHtml(apiClient, item, chapters, positionTicks) {
+    function updateChapterBubble(apiClient, item, chapters, positionTicks, bubble) {
         let chapter;
         let index = -1;
 
@@ -1727,28 +1667,12 @@ export default function (view) {
         }
 
         if (!chapter) {
-            return null;
+            return false;
         }
 
         const src = getImgUrl(item, chapter, index, 400, apiClient);
-        let html = '<div class="chapterThumbContainer chapterBubblePosition">';
-
-        if (src) {
-            html += '<img class="chapterThumb" src="' + src + '" />';
-            html += '<div class="chapterThumbTextContainer">';
-        } else {
-            html += '<div class="chapterThumbTextContainer chapterBubblePosition">';
-        }
-
-        html += '<div class="chapterThumbText chapterThumbText-dim">';
-        html += escapeHtml(chapter.Name);
-        html += '</div>';
-        html += '<h2 class="chapterThumbText">';
-        html += datetime.getDisplayRunningTime(positionTicks);
-        html += '</h2>';
-        html += '</div>';
-
-        return html + '</div>';
+        seekPreview.update(bubble, datetime.getDisplayRunningTime(positionTicks), chapter.Name || '', src ? { url: src } : undefined);
+        return true;
     }
 
     let playPauseClickTimeout;
@@ -1954,10 +1878,12 @@ export default function (view) {
     });
     view.querySelector('.btnVideoOsdSettings').addEventListener('click', onSettingsButtonClick);
     view.addEventListener('viewhide', function () {
+        seekPreview.reset();
         clearHideAnimationEventListeners(headerElement);
         headerElement.classList.remove('hide');
     });
     view.addEventListener('viewdestroy', function () {
+        seekPreview.reset();
         if (self.touchHelper) {
             self.touchHelper.destroy();
             self.touchHelper = null;
@@ -2062,15 +1988,21 @@ export default function (view) {
         const ticks = currentRuntimeTicks * value / 100;
 
         if (trickplayResolution && item?.Trickplay) {
-            return updateTrickplayBubbleHtml(
+            const updated = updateTrickplayBubbleHtml(
                 ServerConnections.getApiClient(item.ServerId),
                 trickplayResolution,
                 item,
                 currentPlayer.streamInfo.mediaSource.Id,
                 bubble,
                 ticks);
+            if (updated) return true;
         }
 
+        if (!enableProgressByTimeOfDay && currentRuntimeTicks && item?.Chapters?.length) {
+            if (updateChapterBubble(ServerConnections.getApiClient(item.ServerId), item, item.Chapters, ticks, bubble)) return true;
+        }
+
+        seekPreview.reset();
         return false;
     };
 
@@ -2095,16 +2027,6 @@ export default function (view) {
         let ticks = currentRuntimeTicks;
         ticks /= 100;
         ticks *= value;
-        const item = currentItem;
-
-        if (item?.Chapters?.length) {
-            const html = getChapterBubbleHtml(ServerConnections.getApiClient(item.ServerId), item, item.Chapters, ticks);
-
-            if (html) {
-                return html;
-            }
-        }
-
         return '<h1 class="sliderBubbleText">' + datetime.getDisplayRunningTime(ticks) + '</h1>';
     };
 

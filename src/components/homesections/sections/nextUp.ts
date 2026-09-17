@@ -13,39 +13,46 @@ import ServerConnections from 'lib/jellyfin-apiclient/ServerConnections';
 import type { UserSettings } from 'scripts/settings/userSettings';
 import { toIsoDateOnlyString } from 'utils/date';
 import { queryClient } from 'utils/query/queryClient';
+import { getPendingHomePlaybackReports } from 'utils/query/pendingHomePlaybackReports';
 
 import type { SectionContainerElement, SectionOptions } from './section';
 
-function getNextUpFetchFn(
+function getNextUpQueryOptions(
     apiClient: ApiClient,
     userSettings: UserSettings,
     { enableOverflow }: SectionOptions
 ) {
-    return function () {
-        const api = ServerConnections.getApi(apiClient.serverId());
-        const oldestDateForNextUp = new Date();
-        oldestDateForNextUp.setDate(oldestDateForNextUp.getDate() - userSettings.maxDaysForNextUp());
-        return queryClient
-            .fetchQuery(getNextUpQuery(api, {
-                userId: apiClient.getCurrentUserId(),
-                limit: enableOverflow ? 24 : 15,
-                fields: [
-                    ItemFields.PrimaryImageAspectRatio,
-                    ItemFields.DateCreated,
-                    ItemFields.Path,
-                    ItemFields.MediaSourceCount
-                ],
-                imageTypeLimit: 1,
-                enableImageTypes: [
-                    ImageType.Primary,
-                    ImageType.Backdrop,
-                    ImageType.Thumb
-                ],
-                enableTotalRecordCount: false,
-                nextUpDateCutoff: toIsoDateOnlyString(oldestDateForNextUp),
-                enableResumable: false,
-                enableRewatching: userSettings.enableRewatchingInNextUp()
-            }));
+    const api = ServerConnections.getApi(apiClient.serverId());
+    const oldestDateForNextUp = new Date();
+    oldestDateForNextUp.setDate(oldestDateForNextUp.getDate() - userSettings.maxDaysForNextUp());
+    return getNextUpQuery(api, {
+        userId: apiClient.getCurrentUserId(),
+        limit: enableOverflow ? 24 : 15,
+        fields: [
+            ItemFields.PrimaryImageAspectRatio,
+            ItemFields.DateCreated,
+            ItemFields.Path,
+            ItemFields.MediaSourceCount
+        ],
+        imageTypeLimit: 1,
+        enableImageTypes: [
+            ImageType.Primary,
+            ImageType.Backdrop,
+            ImageType.Thumb
+        ],
+        enableTotalRecordCount: false,
+        nextUpDateCutoff: toIsoDateOnlyString(oldestDateForNextUp),
+        enableResumable: false,
+        enableRewatching: userSettings.enableRewatchingInNextUp()
+    });
+}
+
+function getNextUpFetchFn(apiClient: ApiClient, userSettings: UserSettings, options: SectionOptions) {
+    return async function () {
+        const pendingReport = getPendingHomePlaybackReports(apiClient.serverId(), apiClient.getCurrentUserId());
+        await pendingReport?.done;
+        const query = getNextUpQueryOptions(apiClient, userSettings, options);
+        return queryClient.fetchQuery(query);
     };
 }
 
@@ -115,6 +122,7 @@ export function loadNextUp(
 
     const itemsContainer: SectionContainerElement | null = elem.querySelector('.itemsContainer');
     if (!itemsContainer) return;
+    itemsContainer.setAttribute('data-home-playback-query', 'nextup');
     itemsContainer.fetchData = getNextUpFetchFn(apiClient, userSettings, options);
     itemsContainer.getItemsHtml = getNextUpItemsHtmlFn(userSettings.useEpisodeImagesInNextUpAndResume(), options);
     itemsContainer.parentContainer = elem;

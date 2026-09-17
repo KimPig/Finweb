@@ -63,26 +63,37 @@ function showBackdrop(type, parentId) {
     }
 }
 
-async function showSplashScreen() {
-    const api = ServerConnections.getApi();
-    const brandingOptions = await queryClient.fetchQuery(getBrandingOptionsQuery(api));
-    if (brandingOptions.SplashscreenEnabled) {
-        setBackdropImages([
-            api.getUri(SPLASHSCREEN_URL, { t: Date.now() })
-        ]);
-    } else {
-        clearBackdrop();
+let splashscreenRevision = 0;
+
+async function showSplashScreen(revision) {
+    try {
+        const serverId = new URLSearchParams(window.location.hash.split('?')[1] || '').get('serverid');
+        const api = ServerConnections.getApi(serverId || undefined);
+        if (!api) return;
+        const brandingOptions = await queryClient.fetchQuery(getBrandingOptionsQuery(api));
+        if (revision !== splashscreenRevision) return;
+        if (brandingOptions.SplashscreenEnabled) {
+            setBackdropImages([
+                api.getUri(SPLASHSCREEN_URL, { t: Date.now() })
+            ]);
+        } else {
+            clearBackdrop();
+        }
+    } catch {
+        if (revision === splashscreenRevision) clearBackdrop();
     }
 }
 
 pageClassOn('pageshow', 'page', function () {
     const page = this;
+    const revision = ++splashscreenRevision;
 
     if (!page.classList.contains('selfBackdropPage')) {
         if (page.classList.contains('backdropPage')) {
             const type = page.getAttribute('data-backdroptype');
             if (type === 'splashscreen') {
-                showSplashScreen();
+                clearBackdrop();
+                showSplashScreen(revision);
             } else if (enabled()) {
                 const parentId = page.classList.contains('globalBackdropPage') ? '' : libraryMenu.getTopParentId();
                 showBackdrop(type, parentId);

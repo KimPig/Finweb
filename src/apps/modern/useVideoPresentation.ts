@@ -4,8 +4,24 @@ import { useLayoutEffect } from 'react';
 export function useVideoPresentation() {
     useLayoutEffect(() => {
         let player: Element | null = null;
+        const surfaces = new Map<Element, boolean>();
+        const restore = (element: Element, wasInert: boolean) => {
+            if (wasInert) element.setAttribute('inert', '');
+            else element.removeAttribute('inert');
+            surfaces.delete(element);
+        };
         const update = () => {
-            document.body.classList.toggle('finweb-video-presentation', Boolean(player?.classList.contains('videoPlayerContainer-onTop')));
+            const presenting = Boolean(player?.classList.contains('videoPlayerContainer-onTop'));
+            document.body.classList.toggle('finweb-video-presentation', presenting);
+            surfaces.forEach((wasInert, element) => {
+                if (!presenting || !element.isConnected) restore(element, wasInert);
+            });
+            if (presenting) {
+                document.querySelectorAll('.finweb-layout, .finweb-drawer, .appfooter').forEach(element => {
+                    if (!surfaces.has(element)) surfaces.set(element, element.hasAttribute('inert'));
+                    element.setAttribute('inert', '');
+                });
+            }
         };
         const playerObserver = new MutationObserver(update);
         const attach = () => {
@@ -18,12 +34,15 @@ export function useVideoPresentation() {
             update();
         };
         const bodyObserver = new MutationObserver(attach);
-        bodyObserver.observe(document.body, { childList: true });
+        bodyObserver.observe(document.body, { childList: true, subtree: true });
         attach();
         return () => {
             bodyObserver.disconnect();
             playerObserver.disconnect();
             document.body.classList.remove('finweb-video-presentation');
+            surfaces.forEach((wasInert, element) => {
+                restore(element, wasInert);
+            });
         };
     }, []);
 }

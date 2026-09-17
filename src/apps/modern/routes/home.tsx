@@ -1,14 +1,14 @@
 import { BaseItemKind } from '@jellyfin/sdk/lib/generated-client/models/base-item-kind';
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
 import globalize from '../../../lib/globalize';
 import { clearBackdrop } from '../../../components/backdrop/backdrop';
 import layoutManager from '../../../components/layoutManager';
 import Page from '../../../components/Page';
-import ContentLoadingBoundary from 'components/loading/ContentLoadingBoundary';
 import { EventType } from 'constants/eventType';
 import Events from 'utils/events';
+import { useHomePlaybackVisibility } from './HomePlaybackVisibility';
 
 import '../../../elements/emby-tabs/emby-tabs';
 import '../../../elements/emby-button/emby-button';
@@ -29,10 +29,14 @@ type ControllerProps = {
 };
 
 const Home = () => {
-    const [isLoading, setIsLoading] = useState(true);
+    const isActive = useHomePlaybackVisibility();
+    const active = useRef(isActive);
+    active.current = isActive;
     const loadRequest = useRef(0);
     const [ searchParams ] = useSearchParams();
-    const initialTabIndex = parseInt(searchParams.get('tab') ?? '0', 10);
+    const homeTabIndex = useRef(0);
+    if (isActive) homeTabIndex.current = parseInt(searchParams.get('tab') ?? '0', 10);
+    const initialTabIndex = homeTabIndex.current;
 
     const libraryMenu = useMemo(async () => ((await import('../../../scripts/libraryMenu')).default), []);
     const mainTabsManager = useMemo(() => import('../../../components/maintabsmanager'), []);
@@ -43,7 +47,8 @@ const Home = () => {
     const element = useRef<HTMLDivElement>(null);
 
     const setTitle = useCallback(async () => {
-        (await libraryMenu).setTitle(null);
+        const menu = await libraryMenu;
+        if (active.current) menu.setTitle(null);
     }, [libraryMenu]);
 
     const getTabs = () => {
@@ -75,6 +80,7 @@ const Home = () => {
         }
 
         return import(/* webpackChunkName: "[request]" */ `../../../apps/legacy/controllers/${depends}`).then(({ default: ControllerFactory }) => {
+            if (!active.current || !element.current) return null;
             let controller = tabControllers[index];
 
             if (!controller) {
@@ -89,10 +95,9 @@ const Home = () => {
 
     const loadTab = useCallback(async (index: number, previousIndex: number | null) => {
         const request = ++loadRequest.current;
-        setIsLoading(true);
         try {
             const controller = await getTabController(index);
-            if (request !== loadRequest.current) return;
+            if (!controller || request !== loadRequest.current || !active.current) return;
             const refresh = !controller.refreshed;
 
             await controller.onResume({
@@ -105,8 +110,6 @@ const Home = () => {
             tabController.current = controller;
         } catch (err) {
             console.error('[Home] failed to get tab controller', err);
-        } finally {
-            if (request === loadRequest.current) setIsLoading(false);
         }
     }, [ getTabController ]);
 
@@ -123,39 +126,42 @@ const Home = () => {
     }, [ loadTab, tabControllers ]);
 
     const onSetTabs = useCallback(async () => {
-        (await mainTabsManager).setTabs(element.current, initialTabIndex, getTabs, getTabContainers, null, onTabChange, false);
+        const tabs = await mainTabsManager;
+        if (active.current) tabs.setTabs(element.current, initialTabIndex, getTabs, getTabContainers, null, onTabChange, false);
     }, [ initialTabIndex, mainTabsManager, onTabChange ]);
 
     const onResume = useCallback(async () => {
+        if (!active.current) return;
         void setTitle();
         clearBackdrop();
 
         const currentTabController = tabController.current;
 
         if (!currentTabController) {
-            (await mainTabsManager).selectedTabIndex(initialTabIndex);
+            const tabs = await mainTabsManager;
+            if (active.current) tabs.selectedTabIndex(initialTabIndex);
         } else if (currentTabController?.onResume) {
             await currentTabController.onResume({});
         }
-        (documentRef.current.querySelector('.skinHeader') as HTMLDivElement).classList.add('noHomeButtonHeader');
+        if (active.current) documentRef.current.querySelector('.skinHeader')?.classList.add('noHomeButtonHeader');
     }, [ initialTabIndex, mainTabsManager, setTitle ]);
 
     const onPause = useCallback(() => {
-        const currentTabController = tabController.current;
-        if (currentTabController?.onPause) {
-            currentTabController.onPause();
-        }
-        (documentRef.current.querySelector('.skinHeader') as HTMLDivElement).classList.remove('noHomeButtonHeader');
-    }, []);
+        tabControllers.forEach(controller => {
+            controller.onPause();
+        });
+        documentRef.current.querySelector('.skinHeader')?.classList.remove('noHomeButtonHeader');
+    }, [tabControllers]);
 
     const renderHome = useCallback(() => {
+        if (!active.current) return;
         void onSetTabs();
         void onResume();
     }, [ onResume, onSetTabs ]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
         const requests = loadRequest;
-        if (documentRef.current?.querySelector('.headerTabs')) {
+        if (isActive && documentRef.current?.querySelector('.headerTabs')) {
             renderHome();
         }
 
@@ -163,7 +169,17 @@ const Home = () => {
             requests.current++;
             onPause();
         };
-    }, [onPause, renderHome]);
+    }, [isActive, onPause, renderHome]);
+
+    useEffect(() => {
+        return () => {
+            tabControllers.forEach(controller => {
+                controller.destroy();
+            });
+            tabControllers.length = 0;
+            tabController.current = null;
+        };
+    }, [tabControllers]);
 
     useEffect(() => {
         const doc = documentRef.current;
@@ -177,6 +193,7 @@ const Home = () => {
     return (
         <div ref={element}>
             <Page
+                isActive={isActive}
                 id='indexPage'
                 className='mainAnimatedPage homePage libraryPage allLibraryPage pageWithAbsoluteTabs withTabs'
                 isBackButtonEnabled={false}
@@ -186,14 +203,12 @@ const Home = () => {
                     BaseItemKind.Book
                 ]}
             >
-                <ContentLoadingBoundary loading={isLoading} progressive>
-                    <div className='tabContent pageTabContent' id='homeTab' data-index='0'>
-                        <div className='sections'></div>
-                    </div>
-                    <div className='tabContent pageTabContent' id='favoritesTab' data-index='1'>
-                        <div className='sections'></div>
-                    </div>
-                </ContentLoadingBoundary>
+                <div className='tabContent pageTabContent' id='homeTab' data-index='0'>
+                    <div className='sections'></div>
+                </div>
+                <div className='tabContent pageTabContent' id='favoritesTab' data-index='1'>
+                    <div className='sections'></div>
+                </div>
             </Page>
         </div>
     );
