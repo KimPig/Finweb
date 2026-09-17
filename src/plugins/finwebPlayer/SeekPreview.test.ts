@@ -180,6 +180,20 @@ describe('SeekPreview', () => {
         expect(bubble.textContent).toBe('2:00');
     });
 
+    it('normalizes chapter names and leaves whitespace-only names empty', () => {
+        preview.update(bubble, '1:00', '  Chapter 3  ', source);
+        const chapter = bubble.querySelector('.chapterThumbText-dim')!;
+        expect(chapter.textContent).toBe('Chapter 3');
+        preview.update(bubble, '1:01', ' \t\n\u00a0 ', source);
+        expect(chapter.matches(':empty')).toBe(true);
+        finish(0, 'error');
+        expect(chapter.matches(':empty')).toBe(true);
+        preview.update(bubble, '1:02', ' \t ');
+        expect(chapter.matches(':empty')).toBe(true);
+        preview.update(bubble, '1:03', 'Chapter 4');
+        expect(chapter.textContent).toBe('Chapter 4');
+    });
+
     it('bounds the sheet cache and detaches callbacks on eviction and view exit', () => {
         for (let index = 0; index < 10; index++) {
             preview.update(bubble, '1:00', '', { ...source, url: `/sheet-${index}.jpg` });

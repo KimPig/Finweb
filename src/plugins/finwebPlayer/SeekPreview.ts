@@ -35,8 +35,9 @@ export default class SeekPreview {
     }
 
     update(bubble: HTMLElement, time: string, chapter: string, source?: PreviewImage) {
+        const chapterName = chapter.trim();
         if (this.time.textContent !== time) this.time.textContent = time;
-        if (this.chapter.textContent !== chapter) this.chapter.textContent = chapter;
+        if (this.chapter.textContent !== chapterName) this.chapter.textContent = chapterName;
         if (this.container.parentElement !== bubble) {
             bubble.textContent = '';
             bubble.appendChild(this.container);

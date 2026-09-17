@@ -63,7 +63,16 @@ try {
         const text = container.querySelector('.chapterThumbTextContainer');
         const chapter = container.querySelector('.chapterThumbText-dim');
         const rect = media.getBoundingClientRect();
+        const boxRect = box.getBoundingClientRect();
+        const boxStyle = getComputedStyle(box);
+        const timeRect = container.querySelector('h2').getBoundingClientRect();
+        const lastRect = getComputedStyle(chapter).display === 'none' ? timeRect : chapter.getBoundingClientRect();
+        const textStart = media.hidden ? boxRect.top + parseFloat(boxStyle.borderTopWidth) : rect.bottom;
         return {
+            textTopGap:timeRect.top - textStart,
+            textBottomGap:boxRect.bottom - parseFloat(boxStyle.borderBottomWidth) - lastRect.bottom,
+            textBlockHeight:lastRect.bottom - timeRect.top,
+            boxHeight:boxRect.height,
             width:rect.width, height:rect.height, gap:text.getBoundingClientRect().top - rect.bottom,
             background:getComputedStyle(container).backgroundColor,
             image:getComputedStyle(media).backgroundImage,
@@ -139,8 +148,41 @@ try {
     await update('/images/reduced.svg');
     assert.equal((await metrics()).spinner, 'none');
     await finish('/images/reduced.svg');
+    let alignmentCases = 0;
+    for (const viewport of [{ width:1280, height:800 }, { width:390, height:844 }, { width:844, height:390 }]) {
+        await page.setViewportSize(viewport);
+        for (const dir of ['ltr', 'rtl']) {
+            await page.evaluate(direction => {
+                document.documentElement.dir = direction;
+            }, dir);
+            for (const kind of ['sprite', 'chapter', 'none', 'error']) {
+                for (const name of ['', 'Chapter 3', 'A very long chapter name '.repeat(12), ' \t ']) {
+                    const url = kind === 'none' ? null : `/images/alignment-${alignmentCases}.svg`;
+                    const options = { chapter:name, chapterImage:kind === 'chapter' };
+                    const assertCentered = async () => {
+                        const result = await metrics();
+                        const gap = result.visible ? 10 : 12;
+                        assert.ok(Math.abs(result.textTopGap - gap) < 0.1, `${kind}: top gap`);
+                        assert.ok(Math.abs(result.textBottomGap - gap) < 0.1, `${kind}: bottom gap`);
+                        assert.equal(result.chapterVisible, Boolean(name.trim()));
+                        const expectedHeight = (result.visible ? result.height : 0) + result.textBlockHeight + 26;
+                        assert.ok(Math.abs(result.boxHeight - expectedHeight) < 0.1, `${kind}: total height stays unchanged`);
+                    };
+                    await update(url, options);
+                    await assertCentered();
+                    if (url) {
+                        await finish(url, kind === 'error');
+                        await page.waitForFunction(() => !document.querySelector('.finweb-seek-loading'));
+                        await assertCentered();
+                    }
+                    alignmentCases++;
+                }
+            }
+        }
+    }
+    assert.equal(alignmentCases, 96);
     assert.deepEqual(errors, []);
-    console.log('PASS seek preview: 85% sprite geometry, opaque/no-gap loading, success/error, stale responses, chapter images, time-only, RTL/mobile and reduced motion; no screenshots');
+    console.log('PASS seek preview: 85% sprites, loading/error, stale responses, chapter images, time-only, 96 centered-text cases with unchanged height, RTL/mobile and reduced motion; no screenshots');
 } finally {
     await browser.close();
     await new Promise(resolve => server.close(resolve));

@@ -146,6 +146,10 @@
 
     &.finweb-seek-has-image .chapterThumbTextContainer {
         contain: inline-size;
+
+        /* Balance the outer bubble's 4px bottom padding without changing height. */
+        padding-top: 10px;
+        padding-bottom: 6px;
     }
 
     .chapterThumbText {
