@@ -38,9 +38,9 @@ Notable upstream commits in that integration:
 - `5692208f57`: correct Safari indicator SVG fill colors.
 - `fae41f33eb`: release metadata, adapted to Finweb's identity.
 
-Finweb commit containing this integration: **not assigned in this uncommitted
-working state**. Replace this note with the actual integration commit once it is
-committed. The upstream commit is not a Finweb commit or a published release tag.
+Finweb commit containing this integration and the subsequent customizations:
+[`8b3134842873030956ab6818a5d508a24874a57b`](https://github.com/KimPig/Finweb/commit/8b3134842873030956ab6818a5d508a24874a57b).
+This Finweb commit is distinct from the official upstream baseline commit.
 
 The integration record includes unit/SDK checks, identity and browser-layout
 fixtures, production build, JavaScript compatibility checks and preview startup.
