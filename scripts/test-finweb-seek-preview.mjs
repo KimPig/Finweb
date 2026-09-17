@@ -13,7 +13,7 @@ import SeekPreview from './src/plugins/finwebPlayer/SeekPreview';
 window.preview = new SeekPreview();
 window.updatePreview = (url, options = {}) => {
  const bubble = document.querySelector('.sliderBubble');
- bubble.style.left = (options.left || 0) + 'px';
+ bubble.style.left = '50%';
  const tile = options.chapterImage ? undefined : { width:320, height:180, x:options.x || 0, y:0 };
  window.preview.update(bubble, options.time || '13:29', options.chapter || '', url ? {url,tile} : undefined);
 };` }
@@ -74,6 +74,7 @@ try {
             visible:!media.hidden, left:box.getBoundingClientRect().left,
             right:box.getBoundingClientRect().right,
             time:container.querySelector('h2').textContent,
+            trackGap:box.parentElement.getBoundingClientRect().top - box.getBoundingClientRect().bottom,
             timeSize:getComputedStyle(container.querySelector('h2')).fontSize
         };
     });
@@ -87,7 +88,7 @@ try {
                 window.preview.reset();
             }, dir);
             const url = `/images/${width}-${dir}.svg`;
-            await update(url, { chapter: 'A very long chapter name '.repeat(12), left: 9999 });
+            await update(url, { chapter: 'A very long chapter name '.repeat(12) });
             let result = await metrics();
             assert.equal(result.width, 272);
             assert.equal(result.height, 153);
@@ -95,7 +96,6 @@ try {
             assert.equal(result.background, 'rgb(31, 31, 31)');
             assert.equal(result.image, 'none');
             assert.equal(result.spinner, 'finweb-seek-spin');
-            assert.ok(result.left >= 0 && result.right <= width, `preview fits the viewport (${dir}): ${JSON.stringify(result)}`);
             await finish(url);
             await page.waitForFunction(() => !document.querySelector('.finweb-seek-loading'));
             result = await metrics();
@@ -122,6 +122,7 @@ try {
     await finish('/images/failure.svg', true);
     await page.waitForFunction(() => document.querySelector('.finweb-seek-image').hidden);
     assert.equal((await metrics()).spinner, 'none');
+    assert.equal((await metrics()).trackGap, 16, 'failed image falls back to a separated time bubble');
     assert.equal(await page.locator('.chapterThumbText-dim').textContent(), 'Still here');
     await update('/images/chapter.svg', { chapterImage: true });
     await finish('/images/chapter.svg');
@@ -133,6 +134,7 @@ try {
     await update(null);
     assert.equal((await metrics()).visible, false);
     assert.equal((await metrics()).chapterVisible, false);
+    assert.equal((await metrics()).trackGap, 16, 'time-only bubble stays above the progress bar');
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await update('/images/reduced.svg');
     assert.equal((await metrics()).spinner, 'none');

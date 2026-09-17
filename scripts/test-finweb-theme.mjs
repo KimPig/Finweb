@@ -52,10 +52,11 @@ import {createHashRouter,RouterProvider,Outlet,useNavigate,useLocation} from 're
 import theme,{finwebTheme} from './src/themes';import CustomJavaScript from './src/components/CustomJavaScript';
 import {usesFinwebTheme} from './src/utils/finweb/themeScope';
 import Button from '@mui/material/Button';
+import IconButton from '@mui/material/IconButton';
 import UserAvatar from './src/components/UserAvatar';import BrandLogo from './src/components/toolbar/BrandLogo';
 import {Component as Branding,action} from './src/apps/dashboard/routes/branding';
 import {queryClient} from 'utils/query/queryClient';
-function App(){window.navigate=useNavigate();const enabled=usesFinwebTheme(useLocation().pathname);useLayoutEffect(()=>{document.documentElement.toggleAttribute('data-finweb-theme',enabled);},[enabled]);return <ThemeProvider theme={enabled?finwebTheme:theme} defaultMode='dark'><CustomJavaScript/><BrandLogo/><UserAvatar user={{Id:'u',Name:'User'}} size={30}/><Button id='theme-probe'>Theme</Button><Outlet/></ThemeProvider>;}
+function App(){window.navigate=useNavigate();const enabled=usesFinwebTheme(useLocation().pathname);useLayoutEffect(()=>{document.documentElement.toggleAttribute('data-finweb-theme',enabled);},[enabled]);return <ThemeProvider theme={enabled?finwebTheme:theme} defaultMode='dark'><CustomJavaScript/><BrandLogo/><UserAvatar user={{Id:'u',Name:'User'}} size={30}/><Button id='theme-probe'>Theme</Button><IconButton id='ripple-probe' aria-label='Ripple test'><span>R</span></IconButton><Outlet/></ThemeProvider>;}
 const router=createHashRouter([{element:<App/>,children:[{path:'/dashboard/branding',element:<Branding/>,action},{path:'*',element:<div id='screen'>Fixture</div>}]}]);
 createRoot(document.getElementById('root')).render(<QueryClientProvider client={queryClient}><RouterProvider router={router}/></QueryClientProvider>);
 ` }
@@ -121,6 +122,14 @@ try {
     assert.equal(await page.locator('.MuiAvatar-root').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(36, 116, 255)');
     assert.equal(await page.locator('#theme-probe').evaluate(el => getComputedStyle(el).backgroundColor), 'rgb(36, 116, 255)');
     assert.equal(await page.locator('#theme-probe').evaluate(el => getComputedStyle(el).borderRadius), '0px');
+    const rippleButton = page.locator('#ripple-probe');
+    await rippleButton.hover();
+    await page.mouse.down();
+    await rippleButton.locator('.MuiTouchRipple-child').waitFor();
+    assert.deepEqual(await rippleButton.evaluate(el => [el, ...el.querySelectorAll('.MuiTouchRipple-root, .MuiTouchRipple-child')]
+        .map(node => getComputedStyle(node).borderRadius)), ['0px', '0px', '0px']);
+    await page.mouse.up();
+    await page.waitForTimeout(600);
     assert.equal(await page.locator('script[data-finweb-custom-js]').getAttribute('data-finweb-custom-js-status'), 'completed');
     assert.ok(await page.locator('.finweb-brand-logo').evaluate(img => img.complete && img.naturalWidth > 0));
 
@@ -129,6 +138,11 @@ try {
     await page.waitForURL('**/#/dashboard/branding');
     await page.locator('textarea[name="FinwebCustomJs"]').waitFor();
     assert.equal(await page.locator('#theme-probe').evaluate(el => getComputedStyle(el).borderRadius), '4px');
+    await rippleButton.hover();
+    await page.mouse.down();
+    await rippleButton.locator('.MuiTouchRipple-child').waitFor();
+    assert.equal(await rippleButton.locator('.MuiTouchRipple-child').evaluate(el => getComputedStyle(el).borderRadius), '50%', 'Dashboard keeps the default ripple');
+    await page.mouse.up();
     assert.equal(await page.evaluate(() => document.documentElement.hasAttribute('data-finweb-theme')), false);
     assert.equal(await page.evaluate(() => getComputedStyle(document.documentElement).getPropertyValue('--primary-accent-color').trim()), '');
     assert.equal(await page.evaluate(() => window.scriptRuns), 1, 'Existing effects persist on management navigation');

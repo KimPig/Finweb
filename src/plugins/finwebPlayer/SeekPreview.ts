@@ -11,15 +11,16 @@ interface ImageResource {
     state: 'loading' | 'ready' | 'error';
 }
 
-/** One preview per OSD; sprite sheets are reused while the pointer moves. */
+/** Content only; the standard slider owns pointer tracking and positioning. */
 export default class SeekPreview {
     private readonly container = document.createElement('div');
     private readonly media = document.createElement('div');
     private readonly time = document.createElement('h2');
     private readonly chapter = document.createElement('div');
     private readonly resources = new Map<string, ImageResource>();
-    private bubble?: HTMLElement;
     private current?: PreviewImage;
+    private resource?: ImageResource;
+    private initialized = false;
 
     constructor() {
         this.container.className = 'chapterThumbContainer finweb-seek-preview';
@@ -34,89 +35,90 @@ export default class SeekPreview {
     }
 
     update(bubble: HTMLElement, time: string, chapter: string, source?: PreviewImage) {
-        this.bubble = bubble;
-        this.current = source;
-        this.time.textContent = time;
-        this.chapter.textContent = chapter;
+        if (this.time.textContent !== time) this.time.textContent = time;
+        if (this.chapter.textContent !== chapter) this.chapter.textContent = chapter;
         if (this.container.parentElement !== bubble) {
             bubble.textContent = '';
             bubble.appendChild(this.container);
         }
-        this.media.style.width = source?.tile ? `${source.tile.width * IMAGE_SCALE}px` : '';
-        this.media.style.height = source?.tile ? `${source.tile.height * IMAGE_SCALE}px` : '';
-        this.media.classList.toggle('finweb-seek-chapter', Boolean(source && !source.tile));
-        this.media.style.removeProperty('--finweb-chapter-ratio');
 
-        if (source) {
-            let resource = this.resources.get(source.url);
-            if (!resource) {
-                resource = { image: new Image(), state: 'loading' };
-                this.resources.set(source.url, resource);
-                const entry = resource;
-                const finish = (state: ImageResource['state']) => {
-                    entry.state = state;
-                    entry.image.onload = null;
-                    entry.image.onerror = null;
-                    // A late response must not replace a newer sheet or chapter.
-                    if (this.current?.url === source.url && this.resources.get(source.url) === entry) {
-                        this.render();
-                    }
-                };
-                resource.image.onload = () => finish('ready');
-                resource.image.onerror = () => finish('error');
-                resource.image.src = source.url;
-            }
-            this.resources.delete(source.url);
-            this.resources.set(source.url, resource);
-            if (this.resources.size > CACHE_LIMIT) {
-                const oldest = this.resources.keys().next().value!;
-                const discarded = this.resources.get(oldest)!;
-                discarded.image.onload = null;
-                discarded.image.onerror = null;
-                this.resources.delete(oldest);
-            }
+        const previous = this.current;
+        this.current = source;
+        if (!this.initialized || previous?.url !== source?.url) {
+            this.initialized = true;
+            this.resource = source ? this.getResource(source.url) : undefined;
+            this.updateLoadState();
+        } else if (previous?.tile?.width !== source?.tile?.width || previous?.tile?.height !== source?.tile?.height) {
+            this.updateImageSize();
         }
-        this.render();
+
+        // Moving within a sheet only changes the crop, never its loading state.
+        if (source?.tile) {
+            this.setStyle('background-position', `${source.tile.x * IMAGE_SCALE}px ${source.tile.y * IMAGE_SCALE}px`);
+        } else {
+            this.setStyle('background-position', 'center');
+        }
     }
 
-    private render() {
-        const source = this.current;
-        const resource = source && this.resources.get(source.url);
-        const hasImage = Boolean(resource && resource.state !== 'error');
+    private getResource(url: string): ImageResource {
+        let resource = this.resources.get(url);
+        if (!resource) {
+            resource = { image: new Image(), state: 'loading' };
+            const entry = resource;
+            const finish = (state: ImageResource['state']) => {
+                entry.state = state;
+                entry.image.onload = null;
+                entry.image.onerror = null;
+                if (this.current?.url === url && this.resource === entry) this.updateLoadState();
+            };
+            resource.image.onload = () => finish('ready');
+            resource.image.onerror = () => finish('error');
+            resource.image.src = url;
+        }
+        this.resources.delete(url);
+        this.resources.set(url, resource);
+        if (this.resources.size > CACHE_LIMIT) {
+            const oldest = this.resources.keys().next().value!;
+            const discarded = this.resources.get(oldest)!;
+            discarded.image.onload = null;
+            discarded.image.onerror = null;
+            this.resources.delete(oldest);
+        }
+        return resource;
+    }
+
+    private updateLoadState() {
+        const state = this.resource?.state;
+        const hasImage = Boolean(this.resource && state !== 'error');
         this.container.classList.toggle('finweb-seek-has-image', hasImage);
         this.media.hidden = !hasImage;
-        this.media.classList.toggle('finweb-seek-loading', resource?.state === 'loading');
-        this.media.style.backgroundImage = 'none';
-
-        if (source && resource?.state === 'ready') {
-            const { image } = resource;
-            this.media.style.backgroundImage = `url(${JSON.stringify(source.url)})`;
-            if (source.tile) {
-                this.media.style.backgroundSize = `${image.naturalWidth * IMAGE_SCALE}px ${image.naturalHeight * IMAGE_SCALE}px`;
-                this.media.style.backgroundPosition = `${source.tile.x * IMAGE_SCALE}px ${source.tile.y * IMAGE_SCALE}px`;
-            } else {
-                this.media.style.backgroundSize = '100% 100%';
-                this.media.style.backgroundPosition = 'center';
-                this.media.style.setProperty('--finweb-chapter-ratio', String(image.naturalWidth / image.naturalHeight));
-            }
-        }
-        this.clampPosition();
+        this.media.classList.toggle('finweb-seek-loading', state === 'loading');
+        this.media.style.backgroundImage = state === 'ready' && this.current ?
+            `url(${JSON.stringify(this.current.url)})` : 'none';
+        this.updateImageSize();
     }
 
-    private clampPosition() {
-        const bubble = this.bubble;
-        if (!bubble || this.container.parentElement !== bubble) return;
-        const trackWidth = bubble.parentElement?.getBoundingClientRect().width || 0;
-        const width = bubble.getBoundingClientRect().width;
-        const left = parseFloat(bubble.style.left);
-        if (trackWidth && width && Number.isFinite(left)) {
-            bubble.style.left = `${Math.max(width / 2, Math.min(left, trackWidth - width / 2))}px`;
+    private updateImageSize() {
+        const tile = this.current?.tile;
+        const image = this.resource?.state === 'ready' ? this.resource.image : undefined;
+        this.media.classList.toggle('finweb-seek-chapter', Boolean(this.current && !tile));
+        this.setStyle('width', tile ? `${tile.width * IMAGE_SCALE}px` : '');
+        this.setStyle('height', tile ? `${tile.height * IMAGE_SCALE}px` : '');
+        this.setStyle('background-size', tile && image ?
+            `${image.naturalWidth * IMAGE_SCALE}px ${image.naturalHeight * IMAGE_SCALE}px` : '100% 100%');
+        this.setStyle('--finweb-chapter-ratio', !tile && image ? String(image.naturalWidth / image.naturalHeight) : '');
+    }
+
+    private setStyle(property: string, value: string) {
+        if (this.media.style.getPropertyValue(property) !== value) {
+            this.media.style.setProperty(property, value);
         }
     }
 
     reset() {
         this.current = undefined;
-        this.bubble = undefined;
+        this.resource = undefined;
+        this.initialized = false;
         this.container.remove();
         for (const { image } of this.resources.values()) {
             image.onload = null;

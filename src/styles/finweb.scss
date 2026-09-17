@@ -407,6 +407,11 @@
         backdrop-filter: none !important;
     }
 
+    .mdl-slider-container:has(> .osdPositionSlider) .sliderBubble:not(:has(.finweb-seek-has-image)) {
+        top: -16px !important;
+        transform: translate(-50%, -100%);
+    }
+
     .mdl-slider-background-flex {
         height: 10px !important;
         margin-top: -5px !important;
@@ -1127,6 +1132,12 @@
     .cardBox, .listItemImage, .listItemIcon, .countIndicator, .playedIndicator,
     .dialog, .actionSheet, .toast, .toastVisible, .sliderBubble, .chapterThumb
 ) {
+        border-radius: 0 !important;
+    }
+
+    .MuiIconButton-root,
+    .MuiIconButton-root .MuiTouchRipple-root,
+    .MuiIconButton-root .MuiTouchRipple-child {
         border-radius: 0 !important;
     }
 

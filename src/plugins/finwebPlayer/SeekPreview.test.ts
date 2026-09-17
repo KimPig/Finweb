@@ -68,6 +68,73 @@ describe('SeekPreview', () => {
         expect(media().classList.contains('finweb-seek-loading')).toBe(false);
     });
 
+    it('updates time without rewriting an unchanged image or measuring the bubble', () => {
+        preview.update(bubble, '1:00', '', source);
+        finish(0);
+        const observer = new MutationObserver(() => undefined);
+        observer.observe(media(), { attributes: true });
+        const measure = vi.spyOn(bubble, 'getBoundingClientRect');
+        preview.update(bubble, '1:01', '', { ...source, tile: { ...tile } });
+        expect(bubble.querySelector('h2')?.textContent).toBe('1:01');
+        expect(observer.takeRecords()).toHaveLength(0);
+        expect(measure).not.toHaveBeenCalled();
+        observer.disconnect();
+    });
+
+    it('moves within a loaded sheet without clearing its background or repeating size measurement', () => {
+        preview.update(bubble, '1:00', '', source);
+        finish(0);
+        const background = vi.spyOn(media().style, 'backgroundImage', 'set');
+        const measure = vi.spyOn(bubble, 'getBoundingClientRect');
+        preview.update(bubble, '2:00', '', { ...source, tile: { ...tile, x: 0, y: 0 } });
+        expect(media().style.backgroundPosition).toBe('0px 0px');
+        expect(background).not.toHaveBeenCalled();
+        expect(measure).not.toHaveBeenCalled();
+        expect(images).toHaveLength(1);
+    });
+
+    it('leaves all position and size measurements to the original slider', () => {
+        preview.update(bubble, '1:00', '');
+        const measure = vi.spyOn(bubble, 'getBoundingClientRect');
+        bubble.style.left = '150px';
+        preview.update(bubble, '1:01', '');
+        expect(measure).not.toHaveBeenCalled();
+        preview.update(bubble, '10:00', '');
+        preview.update(bubble, '10:00', '', source);
+        finish(0);
+        preview.update(bubble, '10:01', '', { ...source, url: '/missing.jpg' });
+        finish(1, 'error');
+        expect(measure).not.toHaveBeenCalled();
+        expect(bubble.style.left).toBe('150px');
+    });
+
+    it('changes only the crop while a sheet is loading, without resetting its spinner', () => {
+        preview.update(bubble, '1:00', '', source);
+        const classes = vi.spyOn(media().classList, 'toggle');
+        const background = vi.spyOn(media().style, 'backgroundImage', 'set');
+        const resize = vi.spyOn(media().style, 'setProperty');
+        preview.update(bubble, '1:02', '', { ...source, tile: { ...tile, x: 0 } });
+        expect(classes).not.toHaveBeenCalled();
+        expect(background).not.toHaveBeenCalled();
+        expect(resize.mock.calls.map(call => call[0])).toEqual(['background-position']);
+        expect(images).toHaveLength(1);
+        expect(media().classList.contains('finweb-seek-loading')).toBe(true);
+        finish(0);
+        expect(media().style.backgroundPosition).toBe('0px -153px');
+        expect(media().classList.contains('finweb-seek-loading')).toBe(false);
+    });
+
+    it('preserves a loaded chapter ratio and styles while only time changes', () => {
+        preview.update(bubble, '1:00', '', { url: '/chapter.jpg' });
+        finish(0);
+        const observer = new MutationObserver(() => undefined);
+        observer.observe(media(), { attributes: true });
+        preview.update(bubble, '1:01', '', { url: '/chapter.jpg' });
+        expect(media().style.getPropertyValue('--finweb-chapter-ratio')).toBe(String(640 / 360));
+        expect(observer.takeRecords()).toHaveLength(0);
+        observer.disconnect();
+    });
+
     it('ignores stale success and failure after moving to a different sheet', () => {
         preview.update(bubble, '1:00', '', source);
         preview.update(bubble, '3:00', '', { ...source, url: '/sheet-1.jpg' });
